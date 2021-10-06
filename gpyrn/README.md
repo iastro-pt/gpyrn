@@ -2,7 +2,7 @@
 Modelling stellar activity in radial velocity data with Gaussian processes regression networks
 
 ## Package version
-version__ = '1.0'
+version = '1.0' from 06 Oct 2021
 
 ## Content
 
@@ -15,8 +15,6 @@ meanfield.py - mean-field inference functions
 nonparametric.py - non-parametric variational inference functions (experimental)
 
 evidence.py  - evidence calculation functions using the Perrakis et al. (2014) method
-
-utils.py - some useful functions
 
 
 

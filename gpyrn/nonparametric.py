@@ -107,7 +107,7 @@ class inference(object):
         """
         r = time[:, None] - time[None, :]
         #K = kernel(r)
-        K = kernel(r) + 1e-7*np.diag(np.diag(np.ones_like(r)))
+        K = kernel(r) + 1e-6*np.diag(np.diag(np.ones_like(r)))
         K[np.abs(K)<1e-12] = 0.
         return K
     
@@ -191,57 +191,6 @@ class inference(object):
             raise LinAlgError("Not positive definite, even with nugget.")
             
             
-    def _CBMatrix(self, nodes, weight):
-        """
-        Creates the matrix CB (eq. 5 from Wilson et al. 2012), that will be 
-        an N*q*(p+1) X N*q*(p+1) block diagonal matrix
-
-        Parameters
-        ----------
-            nodes = array of node functions 
-            weight = weight function
-
-        Returns
-        -------
-            CB = matrix CB
-        """
-        time = self.time
-        CB_size = time.size * self.q * (self.p + 1)
-        CB = np.zeros((CB_size, CB_size)) #initial empty matrix
-        pos = 0 #we start filling CB at position (0,0)
-        #first we enter the nodes
-        for i in range(self.q):
-            node_CovMatrix = self._kernelMatrix(nodes[i], time)
-            CB[pos:pos+time.size, pos:pos+time.size] = node_CovMatrix
-            pos += time.size
-        weight_CovMatrix = self._kernelMatrix(weight[0], time)
-        #then we enter the weights
-        for i in range(self.qp):
-            CB[pos:pos+time.size, pos:pos+time.size] = weight_CovMatrix
-            pos += time.size
-        return CB
-    
-    
-    def _sampleCB(self, nodes, weight):
-        """ 
-        Returns samples from the matrix CB
-        
-        Parameters
-        ----------
-            nodes = array of node functions 
-            weight = weight function
-            
-        Returns
-        -------
-            Samples of CB
-        """
-        time = self.time
-        mean = np.zeros(time.size*self.q*(self.p+1))
-        cov = self._CBMatrix(nodes, weight)
-        normal = multivariate_normal(mean, cov, allow_singular=True).rvs()
-        return normal
-            
-            
     def sampleIt(self, latentFunc, time=None):
         """
         Returns samples from the kernel
@@ -292,12 +241,9 @@ class inference(object):
             Value of the ELBO per iteration
 
         """
-        #np.random.seed(1)
         #initial variational parameters
         mu = np.random.rand(self.d, self.k).T
         var = np.ones_like(np.random.rand(1, self.k).T) # why?
-        # print('initial mu:', mu)
-        # print('initial var:', var)
         muF, muW = [], []
         for k in range(self.k):
             m1, m2 = self._u_to_fhatW(mu[k, :])
@@ -314,7 +260,6 @@ class inference(object):
             #ELBO = self.ELBOaux(nodes, weights, meanf, jitters, mu, var)
             ELBO, mu, var = self.updateMUandVAR(nodes, weights, meanf, jitters, 
                                                 mu, var)
-            print(ELBO)
             elboArray = np.append(elboArray, ELBO)
             iterNumber += 1
             #Stoping criteria:
@@ -322,7 +267,6 @@ class inference(object):
                 means = np.mean(elboArray[-5:])
                 criteria = np.abs(np.std(elboArray[-5:]) / means)
                 if criteria < 1e-3 and criteria !=0:
-                    print('Finish at iteration {0}'.format(iterNumber))
                     return ELBO, mu, var
         print('Max iterations reached')
         return ELBO, mu, var
@@ -406,21 +350,6 @@ class inference(object):
         return entropy
     
     
-    # def _entropy(self, mu, var):
-    #     varmin = 1e-7
-    #     beta = np.ones((self.k,1)) / self.k
-    #     D = self.time.size * self.q *(self.p+1)
-    #     S0 = np.array(mu - np.mean(mu, axis=0)).T
-    #     S = 2*np.sum(S0*S0, axis=0) - 2*(S0.T @ S0)
-    #     S[S<0] = 0 #it cant be negative
-    #     s = np.sum(np.exp(var)) + varmin
-    #     logP = -0.5*S/s - 0.5*D*np.log(s)
-    #     a = np.zeros((self.k,1))
-    #     for i in range(self.k):
-    #         a[i] = -np.log(self.k) + np.log(np.sum(np.exp(logP[i,:])))
-    #     entropy = np.float(a.T @ beta)
-    #     return entropy
-    
     def _expectedLogLike(self, nodes, weights, means, jitters, muF, muW, var):
         new_y = np.concatenate(self.y) - self._mean(means, self.time)
         new_y = np.array(np.array_split(new_y, self.p)).T 
@@ -440,7 +369,6 @@ class inference(object):
         Ymean = Wblk * Fblk
         Ydiff = (new_y.T - Ymean)**2/errs
         logl = -0.5 * np.sum(Ydiff, axis=1)
-        #print('logl1', logl)
         ### second term of equation 3.22
         kvals = []
         for k in range(self.k):
@@ -452,7 +380,6 @@ class inference(object):
                     value += var[k]**4 * self.q /(jitt2[p] + np.sum(self.yerr2[p,:]))
                     kvals.append(self.p*var[k]**2*np.sum(value))
         kvals = np.array(np.squeeze(kvals))
-        #print('log2', -0.5*kvals)
         logl += -0.5*kvals
         ### third term of equation 3.22
         value = 0
@@ -460,8 +387,6 @@ class inference(object):
             for n in range(self.N):
                 value += np.log(2*np.pi*(jitt2[p] + self.yerr2[p,n]))
         logl += -0.5*value
-        #print('log3', -0.5*value)
-        #print('logl3', -0.5*value)
         return logl
         
         
@@ -522,74 +447,6 @@ class inference(object):
                 D[i,j] = np.linalg.norm(X[:,i] - X[:,j])**2
                 D[j,i] = D[i,j]
         return D
-    
-    
-        # print(-0.5*self.p*var.T)
-        # print(np.sum(Fblk**2, axis=1))
-        # logl += -0.5*self.p*np.squeeze(var).T * np.sum(Fblk**2, axis=1)
-        # print(-0.5*self.p*np.squeeze(var).T * np.sum(Fblk**2, axis=1) /errs)
-          
-        # logl = logl - 0.5*P*sk2*sum(sum(Fhat.^2))/sy2 - 0.5*sk2*sum(sum(W.^2))/sy2...
-        #   - 0.5*(N*P-sum(sum(model.Y_isnan)))*Q*(sk2^2)/sy2;
-            
-        
-#         error_term = np.sqrt(np.sum(np.array(jitters)**2)) / self.p
-#         for i in range(self.p):
-#             error_term += np.sqrt(np.sum(self.yerr[i,:]**2)) / (self.N)
-# #        error_term = error_term
-# #        error_term = 1
-#         final_log = np.array([])
-#         for k in range(self.k):
-#             Wblk = np.array([])
-#             for n in range(self.N):
-#                 for p in range(self.p):
-#                     Wblk = np.append(Wblk, muW[k, p, :, n])
-#             print(Wblk)
-#             Fblk = np.array([])
-#             for n in range(self.N):
-#                 for q in range(self.q):
-#                     for p in range(self.p):
-#                         Fblk = np.append(Fblk, muF[k, :, q, n])
-#             Ymean = Wblk * Fblk
-#             Ymean = Ymean.reshape(self.N, self.p, self.q)
-# #            print(new_y.shape, Ymean.shape)
-#             logl = 0
-#             for q in range(self.q):
-#                 Ydiff = (new_y - Ymean[:, :, q]) * (new_y - Ymean[:, :, q])
-#                 logl += -0.5 * np.sum(Ydiff) / error_term
-            
-#             logl += -0.5*self.p*var[k]*np.sum(muF[k,:,q,n]*muF[k,:,q,n])/error_term+\
-#                     -0.5*var[k]*np.sum(muW[k,p,:,n]*muW[k,p,:,n])/error_term+\
-#                     -0.5*self.N*self.p*self.q*var[k]**2/error_term
-            
-#             final_log = np.append(final_log, logl)
-#         return np.sum(final_log) / self.k
 
 
-#     def _expectedLogPrior(self, nodes, weights, means, jitters, muF, muW, var):
-#         Kf = np.array([self._kernelMatrix(i, self.time) for i in nodes])
-#         invKf = np.array([inv(i) for i in Kf])
-#         Kw = np.array([self._kernelMatrix(j, self.time) for j in weights]) 
-#         invKw = np.array([inv(j) for j in Kw])
-#         Lw = np.array([self._cholNugget(j)[0] for j in Kw])
-        
-#         final_prior = 0
-#         for k in range(self.k):
-#             Lf = [] #the way this is made it will only work for one node
-#             for j in range(self.q):
-#                 Lf = self._cholNugget(Kf[j])[0]
-#                 logprior = -self.q * np.sum(np.log(np.diag(Lf))) \
-#                             -0.5*self.q*var[k] * np.trace(invKf[j])
-# #                print(logprior)
-#                 alpha = inv(Lf) @ muF[k,:,j,:].T
-# #                print(-0.5 * (alpha.T @ alpha))
-#                 logprior += -0.5 * (alpha.T @ alpha)
-#                 for i in range(self.p):
-#                     alpha = inv(Lw[0]) @ muW[k, i, j, :].T
-# #                    print(-0.5 * (alpha.T @ alpha))
-#                     logprior += -0.5 * (alpha.T @ alpha)
-#             logprior += -self.q * np.sum(np.log(np.diag(Lw[0]))) \
-#                             -0.5*self.q * var[k] * np.trace(invKw[0])
-                
-#             final_prior += logprior
-#         return np.sum(final_prior) / self.k
+### END

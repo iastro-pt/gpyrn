@@ -122,22 +122,6 @@ class Cubic(MeanModel):
     def __call__(self, t):
         return np.polyval(self.pars, t)
 
-class CubicSun(MeanModel):
-    """
-    A 3rd degree polynomial mean function
-    m(t) = (t - xshift)**(-3) + yshift
-    """
-    _parsize = 4
-    def __init__(self, xshift, yshift):
-        super(Cubic, self).__init__(xshift, yshift)
-        self.xshift = xshift
-        self.yshift = yshift
-
-    @array_input
-    def __call__(self, t):
-        return (t - self.xshift)**(-3) + self.yshift
-
-
 
 class Sine(MeanModel):
     """
@@ -203,6 +187,22 @@ class Keplerian(MeanModel):
         nu = 2*np.arctan(np.sqrt((1+e)/(1-e))*np.tan(E0/2))
         RV = K*(e*np.cos(w)+np.cos(w+nu)) + sys_vel
         return RV
+
+
+class CubicSun(MeanModel):
+    """
+    A 3rd degree mean function
+    m(t) = (t - xshift)**(-3) + yshift
+    """
+    _parsize = 4
+    def __init__(self, xshift, yshift):
+        super(Cubic, self).__init__(xshift, yshift)
+        self.xshift = xshift
+        self.yshift = yshift
+
+    @array_input
+    def __call__(self, t):
+        return (t - self.xshift)**(-3) + self.yshift
 
 
 ### END

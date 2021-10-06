@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.linalg import cholesky, LinAlgError, inv, cho_solve
-from scipy.stats import multivariate_normal, norm
-from gprn import gp
+from scipy.linalg import cholesky, LinAlgError, cho_solve
+from scipy.stats import multivariate_normal
+from gpyrn import _gp
 
 class inference(object):
     """ 
@@ -103,6 +103,7 @@ class inference(object):
         """
         r = time[:, None] - time[None, :]
         K = kernel(r) + 1e-6*np.diag(np.diag(np.ones_like(r)))
+        K[np.abs(K)<1e-12] = 0.
         return K
     
     
@@ -618,7 +619,6 @@ class inference(object):
         meanVal = np.array(np.array_split(meanVal, self.p))
         y = np.concatenate(self.y) - self._mean(means)
         y = np.array(np.array_split(y, self.p))
-        
         Kf = np.array([self._tinyNuggetKMatrix(i, self.time) +np.diag(np.squeeze(j)) for i,j in zip(node,varF)])
         Kfstar = np.array([self._predictKMatrix(i, tstar) for i in node])
         Kw = np.array([self._tinyNuggetKMatrix(i, self.time) +np.diag(np.squeeze(j)) for i,j in zip(weights,varW)])
@@ -645,11 +645,11 @@ class inference(object):
         if variance:
             #Will not work for self.q > 1
             jitt2 = np.array(jitters)**2
-            gpObj = gp.GP(self.time, muF[0,0,:])
+            gpObj = _gp.GP(self.time, muF[0,0,:])
             n,nv = gpObj.prediction(node[0], tstar, muF[0,0,:], varF[0,0,:])
             predictivesVar = []
             for p in range(self.p):
-                gpObj = gp.GP(self.time, muW[p,0,:])
+                gpObj = _gp.GP(self.time, muW[p,0,:])
                 w,wv = gpObj.prediction(weights[q], tstar, muW[p,0,:], varW[p,0,:])
                 EwEwVf = w*w*nv +wv*(nv+ n*n) + jitt2[p]
                 predictivesVar.append(EwEwVf)
@@ -661,108 +661,4 @@ class inference(object):
         return predictives, predictivesVar, tstar
     
     
-    def oldPrediction(self, node, weights, means, jitters, tstar, mu, var,
-                      separate = False, variance = False):
-        """
-        Prediction for mean-field inference (OLD VERSION)
-        
-        Parameters
-        ----------
-        node: array
-            Node functions 
-        weight: array
-            Weight function
-        means: array
-            Mean functions
-        jitter: array
-            Jitter terms
-        tstar: array
-            Predictions time
-        mu: array
-            Variational means
-        var: array
-            Variational variances
-        separate: bool
-            True to return nodes and weights predictives separately
-        varriance: bool
-            True to return variances, otherwise returns an array of zeros
-        Returns
-        -------
-        predictives: array
-            Predicted means
-        predictivesVar: array
-            Predicted variances
-        """
-        muF, muW = self._u_to_fhatW(mu.flatten())
-        varF, varW = self._u_to_fhatW(var.flatten())
-        meanVal = self._mean(means, tstar)
-        meanVal = np.array(np.array_split(meanVal, self.p))
-        y = np.concatenate(self.y) - self._mean(means)
-        y = np.array(np.array_split(y, self.p))
-        Kf = np.array([self._KMatrix(i, self.time) +np.diag(np.squeeze(j)) for i,j in zip(node,varF)])
-        
-        Kfinv = np.array([inv(i) for i in Kf])
-        Kfstar = np.array([self._predictKMatrix(i, tstar) for i in node])
-        Kw = np.array([self._KMatrix(i, self.time) +np.diag(np.squeeze(j)) for i,j in zip(weights,varW)])
-
-        Kwinv = np.array([inv(j) for j in Kw])
-        Kwstar = np.array([self._predictKMatrix(j, tstar) for j in weights])
-        final_fstar, final_wstar, predictives = [], [], []
-        for p in range(self.p):
-            KwKwMuw = np.squeeze(Kwstar[p,:,:] @Kwinv[p,:,:] @muW[p,:].T)
-            final_wstar.append(np.squeeze(KwKwMuw))
-            for q in range(self.q):
-                #will be a problem if self.q>1
-                KfKfMuf = np.squeeze(Kfstar[q,:,:] @Kfinv[q,:,:] @muF[q,:,:].T)
-                final_fstar.append(np.squeeze(KfKfMuf))
-            predictives.append(KwKwMuw*KfKfMuf + meanVal[p])
-        if variance:
-            jitt2 = np.array(jitters)**2
-            Kfstarxx = np.array([self._KMatrix(i1, tstar) for i1 in node])
-            Kwstarxx = np.array([self._KMatrix(i2, tstar) for i2 in weights])
-            predictivesVar = []
-            q = self.q-1 #will be a problem if self.q > 1
-            for p in range(self.p):
-                KwKwMu = Kwstar[p,:,:] @ Kwinv[p,:,:] @ muW[p,:].T
-                KfKfKf = Kfstar[q,:,:] @ Kfinv[q,:,:] @Kfstar[q,:,:].T
-                firstPart = KwKwMu@KwKwMu.T @(Kfstarxx - KfKfKf)
-                KwKwKw = Kwstar[p,:,:] @Kwinv[p,:,:] @Kwstar[p,:,:] .T
-                KfKfMu = Kfstar[q,:,:] @ Kfinv[q,:,:] @ muF[q,:,:].T
-                secPart = (Kwstarxx - KwKwKw) @(Kfstarxx - KfKfKf + KfKfMu@KfKfMu.T)
-                jittPart = np.mean(jitt2) * np.identity(tstar.size)
-                predictivesVar.append(np.diag(firstPart[q,:,:] + \
-                                              secPart[q,:,:] + jittPart)) 
-            predictives = np.array(predictives)
-            predictivesVar = np.array(predictivesVar)
-            return predictives, predictivesVar
-        
-        if separate:
-            predictives = np.array(predictives)
-            sepPredictives = np.squeeze(np.array([final_fstar,final_wstar]))
-            return predictives, sepPredictives
-        
-        predictives = np.array(predictives)
-        predictivesVar = np.zeros_like(predictives)
-        return predictives, predictivesVar
-    
-    
-    def montecarloLikelihood(self, node, weight, media, jitter, N, 
-                   file = "saved_results_gprn.txt"):
-        f = open(file, "a")
-        meanVal = self._mean(media, self.time)
-        err = np.sqrt(jitter**2 + self.yerr**2)
-        n = 0
-        llhood = 0
-        while n<N:
-            Wf = self.sampleIt(node)*self.sampleIt(weight) + meanVal
-            normpdf =  norm(loc=Wf, scale=err).pdf(self.y)
-            llhood += normpdf.prod()
-            sigmaN = np.std(normpdf)
-            print(n, np.log(llhood/n), sigmaN/np.sqrt(n))
-            n +=1
-            if n%500 ==0:
-                 print(n, np.log(llhood/n), sigmaN/np.sqrt(n), file=f)
-        f.close()
-        return np.log(llhood/N)
-    
-    
+### END

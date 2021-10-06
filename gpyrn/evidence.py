@@ -7,15 +7,18 @@ import numpy as np
 import scipy.stats
 from gprn import utils
 
-### Original functions taken from https://github.com/exord/bayev
+##### Original functions taken from https://github.com/exord/bayev #############
 def compute_perrakis_estimate(marginal_sample, lnlikefunc, lnpriorfunc,
                               nsamples=1000, lnlikeargs=(), lnpriorargs=(),
-                              densityestimation='histogram', errorestimation=False,
-                              **kwargs):
+                              densityestimation='histogram', 
+                              errorestimation=False, **kwargs):
     """
     Computes the Perrakis estimate of the bayesian evidence.
     The estimation is based on n marginal posterior samples
     (indexed by s, with s = 0, ..., n-1).
+    
+    Parameters
+    ----------
     :param array marginal_sample:
         A sample from the parameter marginal posterior distribution.
         Dimensions are (n x k), where k is the number of parameters.
@@ -32,14 +35,20 @@ def compute_perrakis_estimate(marginal_sample, lnlikefunc, lnpriorfunc,
     :param str densityestimation:
         The method used to estimate theinitial_samples marginal posterior density of each
         model parameter ("normal", "kde", or "histogram").
+        
     Other parameters
     ----------------
     :param kwargs:
         Additional arguments passed to estimate_density function.
     :return:
+        
     References
     ----------
     Perrakis et al. (2014; arXiv:1311.0674)
+    
+    Returns
+    -------
+    Perrakis estimate of the evidence
     """
     print('Estimating evidence...')
     if errorestimation:
@@ -49,21 +58,16 @@ def compute_perrakis_estimate(marginal_sample, lnlikefunc, lnpriorfunc,
         marginal_sample = np.array(marginal_sample)
     number_parameters = marginal_sample.shape[1]
     marginal_posterior_density = np.zeros(marginal_sample.shape)
-    print('Estimating posterior densities...')
     for parameter_index in range(number_parameters):
         x = marginal_sample[:, parameter_index]
         marginal_posterior_density[:, parameter_index] = \
             estimate_density(x, method=densityestimation, **kwargs)
-    print('Estimating product densities...')
     prod_marginal_densities = marginal_posterior_density.prod(axis=1)
-    print('Estimating log priors...')
     log_prior = lnpriorfunc(marginal_sample, *lnpriorargs)
-    print('Estimating log likelihoods...')
     log_likelihood = lnlikefunc(marginal_sample, *lnlikeargs)
     cond = log_likelihood != 0
     log_summands = (log_likelihood[cond] + log_prior[cond] -
                     np.log(prod_marginal_densities[cond]))
-    print('Calculating perrakis...')
     perr = log_sum(log_summands) - log(len(log_summands))
     #error estimation
     K = 10
