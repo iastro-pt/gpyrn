@@ -36,10 +36,10 @@ plt.close('all')
 ############## 2 datasets 
 gprn = meanfield.inference(1, time, y1, y1err, y2, y2err)
 
-nodes = [covfunc.Periodic(1, 31, 0.5)]
-weight = [covfunc.SquaredExponential(20, 5), covfunc.SquaredExponential(25, 10)]
+nodes = [covfunc.Periodic(5, 31, 0.5)]
+weight = [covfunc.SquaredExponential(5, 5), covfunc.SquaredExponential(10, 10)]
 means = [meanfunc.Constant(0), meanfunc.Constant(0)]
-jitter = [0.5, 0.25]
+jitter = [0.5, 0.5]
 
 elbo, m, v = gprn.ELBOcalc(nodes, weight, means, jitter, 
                            iterations=5000, mu='init', var='init')
@@ -50,9 +50,9 @@ tstar = np.linspace(time.min(), time.max(), 1000)
 a, _, _, bb = gprn.Prediction(nodes, weight, means, jitter, tstar, m, v, separate=True)
 
 fig = plt.figure(constrained_layout=True, figsize=(7, 7))
-axs = fig.subplot_mosaic( [['predictive 1', 'weight 1'],
+axs = fig.subplot_mosaic( [['predictive 1', 'node'],
                            ['predictive 1', 'node'],
-                           ['predictive 2', 'node'],
+                           ['predictive 2', 'weight 1'],
                            ['predictive 2', 'weight 2'],],)
 
 axs['predictive 1'].set(xlabel='', ylabel='y1')
@@ -71,13 +71,13 @@ axs['predictive 2'].yaxis.set_minor_locator(AutoMinorLocator(5))
 axs['predictive 2'].grid(which='major', alpha=0.5)
 axs['predictive 2'].grid(which='minor', alpha=0.2)
 
-axs['weight 1'].set(xlabel='', ylabel='y1 weight')
+axs['weight 1'].set(xlabel='', ylabel='1st weight')
 axs['weight 1'].plot(tstar, bb[1][0].T, '-b')
 
 axs['node'].set(xlabel='', ylabel='Node')
 axs['node'].plot(tstar, bb[0].T, '-b')
 
-axs['weight 2'].set(xlabel='', ylabel='y2 weight')
+axs['weight 2'].set(xlabel='', ylabel='2nd weight')
 axs['weight 2'].plot(tstar, bb[1][1].T, '-b')
 
 fig.savefig('componentsPlots.png', bbox_inches='tight')
