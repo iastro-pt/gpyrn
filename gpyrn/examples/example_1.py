@@ -23,8 +23,6 @@ plt.xlabel('Time (days)')
 plt.ylabel('Measurements')
 plt.grid(which='major', alpha=0.5)
 plt.savefig('data.png', bbox_inches='tight')
-plt.close('all')
-
 
 ############## 1 dataset - 1 node
 gprn = meanfield.inference(1, time, y1, y1err)
@@ -38,7 +36,6 @@ elbo, m, v = gprn.ELBOcalc(nodes, weight, means, jitter,
                            iterations=5000, mu='init', var='init')
 print('ELBO =', elbo)
 
-
 nodes = [covfunc.Periodic(15, 31, 0.5)]
 weight = [covfunc.SquaredExponential(1, 100)]
 means = [meanfunc.Constant(0)]
@@ -47,7 +44,6 @@ jitter = [0.5]
 elbo, m, v = gprn.ELBOcalc(nodes, weight, means, jitter, 
                            iterations=5000, mu='init', var='init')
 print('ELBO =', elbo)
-
 
 tstar = np.linspace(time.min(), time.max(), 1000)
 mean, _, _ = gprn.Prediction(nodes, weight, means, jitter, tstar, m, v)
@@ -60,4 +56,4 @@ plt.ylabel('Measurements')
 plt.legend(loc='upper right', facecolor='white', framealpha=1, edgecolor='black')
 plt.grid(which='major', alpha=0.5)
 plt.savefig('dataAndPrediction.png', bbox_inches='tight')
-# plt.close('all')
+
