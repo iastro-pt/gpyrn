@@ -266,7 +266,7 @@ class RQP(covFunction):
                         *(1+r**2/(2*self.alpha*self.ell_e**2))**(-self.alpha)
 
 
-##### CoSINE ###################################################################
+##### Cosine ###################################################################
 class CoSINE(covFunction):
     """
     Definition of the cosine kernel

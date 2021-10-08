@@ -240,7 +240,6 @@ class inference(object):
         norm: array
             Sample of K 
         """
-        #print(latentFunc)
         if time is None:
             time = self.time
         mean = np.zeros_like(time)
@@ -301,7 +300,6 @@ class inference(object):
         iterNumber = 0
         while iterNumber < iterations:
             #Optimize mu and var analytically
-            
             ELBO, mu, var, sigF, sigW = self.ELBOaux(Kf, Kw, Lf, Lw, y, 
                                                      jitt2, mu, var)
             elboArray = np.append(elboArray, ELBO)
@@ -351,7 +349,6 @@ class inference(object):
         #to separate the variational parameters between the nodes and weights
         muF, muW = self._u_to_fhatW(mu.flatten())
         varF, varW = self._u_to_fhatW(var.flatten())
-        
         sigmaF, muF, sigmaW, muW = self._updateSigMu(Kf, Kw, y, jitt2, 
                                                      muF, varF, muW, varW)
         #new mean and var for the nodes
@@ -641,12 +638,12 @@ class inference(object):
         predictives = np.zeros((tstar.size, self.p))
         predictivesVar = np.zeros((tstar.size, self.p))
         for p in range(self.p):
+            predictives[:,p] += meanVal[p]
             for q in range(self.q):
                 predictives[:,p] += nPred[q]*wPredd[q,p]
-                predictivesVar[:,p] += wPredd[q,p]*wPredd[q,p]*nVar[q] \
-                                        + wVarr[q,p]*(nVar[q] +nPred[q]*nPred[q]) \
-                                        + jitt2[p]
-
+                predictivesVar[:,p] += wPredd[q,p]*wPredd[q,p]*nVar[q]\
+                                       +wVarr[q,p]*(nVar[q] +nPred[q]*nPred[q])\
+                                       +jitt2[p]
         if separate:
             predictives = np.array(predictives)
             sepPredictives = np.array([nPred,wPred], dtype=object)

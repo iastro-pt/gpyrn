@@ -106,7 +106,6 @@ class inference(object):
             Matrix of a covariance function
         """
         r = time[:, None] - time[None, :]
-        #K = kernel(r)
         K = kernel(r) + 1e-6*np.diag(np.diag(np.ones_like(r)))
         K[np.abs(K)<1e-12] = 0.
         return K
@@ -251,9 +250,7 @@ class inference(object):
             muW.append(m2)
         muF = np.array(muF)
         muW = np.array(muW)
-        
         ELBO = self.ELBOaux(nodes, weights, meanf, jitters, mu, var)
-        print(ELBO)
         elboArray = np.array([ELBO]) #To add new elbo values inside
         iterNumber = 1
         while iterNumber < iterations:
@@ -307,7 +304,6 @@ class inference(object):
             muW.append(m2)
         muF = np.array(muF)
         muW = np.array(muW)
-        
         #nodes and means
         Kf = np.array([self._kernelMatrix(i, self.time) for i in nodes])
         invKf = np.array([inv(i) for i in Kf])
@@ -315,7 +311,6 @@ class inference(object):
         Kw = np.array([self._kernelMatrix(j, self.time) for j in weights])
         invKw = np.array([inv(j) for j in Kw])
         Lw = np.array([self._cholNugget(j)[0] for j in Kw])
-        
         #Entropy
         Entropy = self._entropy(mu, var)
         #print('entropy:', Entropy)
