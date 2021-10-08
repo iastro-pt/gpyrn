@@ -583,7 +583,7 @@ class inference(object):
     
     
     def Prediction(self, node, weights, means, jitters, tstar, mu, var,
-                      separate = False, variance=False):
+                   separate = False):
         """
         Prediction for mean-field inference
         
@@ -605,8 +605,7 @@ class inference(object):
             Variational variances
         separate: bool
             True to return nodes and weights predictives separately
-        var: bool
-            True to return variance, otherwise return an array of zeros
+
         Returns
         -------
         predictives: array
@@ -619,45 +618,39 @@ class inference(object):
         meanVal = np.array(np.array_split(meanVal, self.p))
         y = np.concatenate(self.y) - self._mean(means)
         y = np.array(np.array_split(y, self.p))
-        Kf = np.array([self._tinyNuggetKMatrix(i, self.time) +np.diag(np.squeeze(j)) for i,j in zip(node,varF)])
-        Kfstar = np.array([self._predictKMatrix(i, tstar) for i in node])
-        Kw = np.array([self._tinyNuggetKMatrix(i, self.time) +np.diag(np.squeeze(j)) for i,j in zip(weights,varW)])
-        Kwstar = np.array([self._predictKMatrix(j, tstar) for j in weights])
-        final_fstar, final_wstar, predictives = [], [], []
+        weights = np.array(weights).reshape(self.q, self.p)
+        jitt2 = np.array(jitters)**2
+        nPred, nVar = [], []
+        wPred, wVar = [], []
+        for q in range(self.q):
+            gpObj = _gp.GP(self.time, muF[:,q,:])
+            n,nv = gpObj.prediction(node[q], tstar, muF[:,q,:].reshape(self.N), 
+                                    varF[:,q,:].reshape(self.N))
+            nPred.append(n)
+            nVar.append(nv)
+            for p in range(self.p):
+                gpObj = _gp.GP(self.time, muW[p,q,:])
+                w,wv = gpObj.prediction(weights[q,p], tstar, 
+                                        muW[p,q,:].reshape(self.N), 
+                                        varW[p,q,:].reshape(self.N))
+                wPred.append(w)
+                wVar.append(wv)
+        nPred, nVar = np.array(nPred), np.array(nVar)
+        wPredd = np.array(wPred).reshape(self.q, self.p, tstar.size) 
+        wVarr = np.array(wVar).reshape(self.q, self.p, tstar.size) 
+        predictives = np.zeros((tstar.size, self.p))
+        predictivesVar = np.zeros((tstar.size, self.p))
         for p in range(self.p):
-            Kwcho = cholesky(Kw[p,:,:], overwrite_a=True, lower=False)
-            Kwalpha = cho_solve((Kwcho,False), muW[p,:].reshape(-1), 
-                                overwrite_b=False)
-            KwKwMuw = np.squeeze(Kwstar[p,:,:] @Kwalpha)
-            final_wstar.append(np.squeeze(KwKwMuw))
             for q in range(self.q):
-                #will be a problem if self.q>1
-                Kfcho = cholesky(Kf[q,:,:], overwrite_a=True, lower=False)
-                Kfalpha = cho_solve((Kfcho,False), muF[q,:,:].reshape(-1), 
-                                    overwrite_b=False)
-                KfKfMuf = np.squeeze(Kfstar[q,:,:] @Kfalpha)
-                final_fstar.append(np.squeeze(KfKfMuf))
-            predictives.append(KwKwMuw*KfKfMuf + meanVal[p])
+                predictives[:,p] += nPred[q]*wPredd[q,p]
+                predictivesVar[:,p] += wPredd[q,p]*wPredd[q,p]*nVar[q] \
+                                        + wVarr[q,p]*(nVar[q] +nPred[q]*nPred[q]) \
+                                        + jitt2[p]
+
         if separate:
             predictives = np.array(predictives)
-            sepPredictives = np.squeeze(np.array([final_fstar,final_wstar]))
-            return predictives, sepPredictives, tstar
-        if variance:
-            #Will not work for self.q > 1
-            jitt2 = np.array(jitters)**2
-            gpObj = _gp.GP(self.time, muF[0,0,:])
-            n,nv = gpObj.prediction(node[0], tstar, muF[0,0,:], varF[0,0,:])
-            predictivesVar = []
-            for p in range(self.p):
-                gpObj = _gp.GP(self.time, muW[p,0,:])
-                w,wv = gpObj.prediction(weights[q], tstar, muW[p,0,:], varW[p,0,:])
-                EwEwVf = w*w*nv +wv*(nv+ n*n) + jitt2[p]
-                predictivesVar.append(EwEwVf)
-            predictives = np.array(predictives)
-            predictivesVar = np.array(predictivesVar)
-            return predictives, predictivesVar, tstar
-        predictives = np.array(predictives)
-        predictivesVar = np.zeros_like(predictives)
+            sepPredictives = np.array([nPred,wPred], dtype=object)
+            return predictives, predictivesVar, tstar, sepPredictives
         return predictives, predictivesVar, tstar
     
     
