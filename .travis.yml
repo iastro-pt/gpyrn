@@ -1,0 +1,40 @@
+language: python
+python:
+  - "3.5"
+  - "3.6"
+  - "3.7"
+  - "3.8"
+  - "3.9"
+  
+notifications:
+  email: false
+
+sudo: required
+
+env:
+  global:
+    # List package dependencies for conda
+    - CONDA_DEPS="pytest numpy"
+    # package name for test invocation
+    - PACKAGENAME="gpyrn"
+
+before_install:
+# Here we download miniconda and install the dependencies
+- export MINICONDA=$HOME/miniconda
+- export PATH="$MINICONDA/bin:$PATH"
+- hash -r
+- wget http://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh
+- bash miniconda.sh -b -f -p $MINICONDA
+- conda config --set always_yes yes
+- conda update conda
+- conda info -a
+- conda create -n testenv python=$TRAVIS_PYTHON_VERSION
+- source activate testenv
+- conda install $CONDA_DEPS
+
+install:
+- python setup.py install
+
+script:
+- python -c "import gpyrn"
+
