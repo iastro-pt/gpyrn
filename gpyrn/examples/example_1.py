@@ -11,7 +11,8 @@ plt.rcParams['figure.figsize'] = [8, 4]
 from matplotlib.ticker import AutoMinorLocator
 
 from gpyrn import meanfield
-from gpyrn import covfunc, meanfunc
+from gpyrn import covfunc
+from gpyrn import meanfunc
 
 time = np.linspace(0, 100, 25)
 y1 = 20*np.sin(2*np.pi*time / 31)

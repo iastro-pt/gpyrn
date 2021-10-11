@@ -9,9 +9,9 @@ import matplotlib.pylab as plt
 plt.close('all')
 from matplotlib.ticker import AutoMinorLocator
 
-from gprn import meanField as meanfield
-from gprn import covFunction as covfunc
-from gprn import meanFunction as meanfunc
+from gpyrn import meanfield
+from gpyrn import covfunc
+from gpyrn import meanfunc
 
 time = np.linspace(0, 100, 25)
 y1 = 20*np.sin(2*np.pi*time / 31)
