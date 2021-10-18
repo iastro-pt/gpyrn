@@ -2,8 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/jdavidrcamacho/gpyrn/blob/master/LICENSE)
 
-[![PyPI version fury.io](https://badge.fury.io/py/gpyrn.svg)](https://pypi.org/project/gpyrn/)\
-
+[![PyPI version fury.io](https://badge.fury.io/py/gpyrn.svg)](https://pypi.org/project/gpyrn/)
 
 [![Build Status](https://app.travis-ci.com/jdavidrcamacho/gpyrn.svg?branch=main)](https://app.travis-ci.com/jdavidrcamacho/gpyrn)
 
