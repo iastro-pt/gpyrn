@@ -4,7 +4,7 @@ Collection of useful functions
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scipy.stats import invgamma, rv_continuous
+from scipy.stats import invgamma
 from scipy.linalg import cho_solve, cho_factor
 from scipy.optimize import minimize
 from random import shuffle

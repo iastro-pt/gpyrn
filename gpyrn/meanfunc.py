@@ -64,6 +64,7 @@ class Sum(MeanModel):
         return self.m1(t) + self.m2(t)
 
 
+##### f(x) = a #################################################################
 class Constant(MeanModel):
     """  A constant offset mean function """
     _parsize = 1
@@ -76,6 +77,7 @@ class Constant(MeanModel):
         return np.full(t.shape, self.c)
 
 
+##### f(x) = ax + b ############################################################
 class Linear(MeanModel):
     """
     A linear mean function
@@ -92,6 +94,7 @@ class Linear(MeanModel):
         return self.pars[0] * (t-tmean) + self.pars[1]
 
 
+##### f(x) = ax**2 + bx + c ####################################################
 class Parabola(MeanModel):
     """
     A 2nd degree polynomial mean function
@@ -107,6 +110,7 @@ class Parabola(MeanModel):
         return np.polyval(self.pars, t)
 
 
+##### f(x) = ax**3 + bx**2 + cx + d ############################################
 class Cubic(MeanModel):
     """
     A 3rd degree polynomial mean function
@@ -123,6 +127,7 @@ class Cubic(MeanModel):
         return np.polyval(self.pars, t)
 
 
+##### f(x) = a**2 * sine(2*pi*t/b + c) + d #####################################
 class Sine(MeanModel):
     """
         A sinusoidal mean function
@@ -139,6 +144,7 @@ class Sine(MeanModel):
                 + self.pars[3]
 
 
+##### f(x) = K*(e*np.cos(w+np.cos(w+nu(x))) + d ################################
 class Keplerian(MeanModel):
     """
     Keplerian function adapted from radvel
@@ -167,7 +173,6 @@ class Keplerian(MeanModel):
         convd = np.where(np.abs(M1) > criteria)[0]  # which indices have not converged
         nd = len(convd)  # number of unconverged elements
         count = 0
-        
         while nd > 0:
             count += 1
             E = E0
@@ -183,12 +188,12 @@ class Keplerian(MeanModel):
             M1 = ( E0 - e * np.sin( E0 ) - M0)
             convergence_criteria = np.abs(M1) > criteria
             nd = np.sum(convergence_criteria is True)
-        
         nu = 2*np.arctan(np.sqrt((1+e)/(1-e))*np.tan(E0/2))
         RV = K*(e*np.cos(w)+np.cos(w+nu)) + sys_vel
         return RV
 
 
+##### f(x) = (x - a)**(-3) + b #################################################
 class CubicSun(MeanModel):
     """
     A 3rd degree mean function

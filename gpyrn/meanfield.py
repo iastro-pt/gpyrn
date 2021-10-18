@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.linalg import cholesky, LinAlgError, cho_solve
+from scipy.linalg import cholesky, LinAlgError
 from scipy.stats import multivariate_normal
 from gpyrn import _gp
 

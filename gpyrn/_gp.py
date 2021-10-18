@@ -5,7 +5,6 @@ import numpy as np
 from gprn import covFunction as kernels
 from scipy.linalg import cho_factor, cho_solve
 
-
 ##### Gaussian processes #######################################################
 class GP(object):
     """ 
@@ -124,3 +123,5 @@ class GP(object):
         y_cov = Kstarstar - kstarT_k_kstar
         y_var = np.diag(y_cov) #variance
         return y_mean, y_var
+
+### END
