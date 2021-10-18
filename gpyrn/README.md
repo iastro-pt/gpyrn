@@ -1,7 +1,7 @@
 <img align="left" width="250" height="250" src="https://i.imgur.com/8jqfpoz.png"> 
 
 ### Package version
-version = 1.0 as of 06 Oct 2021
+__version__ = 1.0; as of 06 Oct 2021
 
 <br/>
 <br/>
