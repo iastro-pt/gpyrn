@@ -58,11 +58,17 @@ def logPosterior(thetas):
 ndim = priors().size 
 nwalkers = 2*ndim
 
+
+filename = "savedProgress.h5"
+backend = emcee.backends.HDFBackend(filename)
+backend.reset(nwalkers, ndim)
+
 pool = Pool(8)
-sampler = emcee.EnsembleSampler(nwalkers, ndim, logPosterior, pool=pool)
+sampler = emcee.EnsembleSampler(nwalkers, ndim, logPosterior,
+                                backend=backend, pool=pool)
                                 
 p0=[priors() for i in range(nwalkers)]
-sampler.run_mcmc(p0, 5000, progress=True)
+sampler.run_mcmc(p0, 100000, progress=True)
 
 #chains plot
 fig, axes = plt.subplots(6, figsize=(7, 12), sharex=True)
