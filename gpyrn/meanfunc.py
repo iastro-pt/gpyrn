@@ -4,7 +4,11 @@ Mean functions to use on the GPRN
 from functools import wraps
 import numpy as np
 
-__all__ = ['Constant', 'Linear', 'Parabola', 'Cubic', 'Keplerian']
+__all__ = [
+    'Constant', 'MultiConstant', 'Linear', 'Parabola', 'Cubic', 'Sine',
+    'Keplerian'
+]
+
 
 def array_input(f):
     """ Decorator to provide the __call__ methods with an array """
@@ -106,6 +110,61 @@ class Constant(MeanModel):
     @array_input
     def __call__(self, t):
         return np.full(t.shape, self.pars[0])
+
+
+
+class MultiConstant(MeanModel):
+    """ Contant mean function for multiple instruments """
+    _parsize = 0
+
+    def __init__(self, offsets, obsid, time):
+        """
+        Arguments
+        ---------
+        offsets : array, list
+            Initial values for the between-instrument offsets and the average
+            value of the last instrument: [off_1, off_2, ..., avg_n]. Offsets
+            are relative to the last instrument.
+        obsid : array
+            Indices of observations corresponding to each instrument. These
+            should be one-based: [1, 1, ..., 2, 2, 2, ..., 3]
+        time : array
+            Observed times. Should be the same size as `obsid`.
+        """
+        self.obsid = obsid
+        self.time = time
+        self._parsize = (np.ediff1d(obsid) == 1).sum() + 1
+        self.ii = obsid.astype(int) - 1
+
+        if isinstance(offsets, float):
+            offsets = [offsets]
+
+        assert len(offsets) == self._parsize, \
+            f'wrong number of parameters, expected {self._parsize} got {len(offsets)}'
+
+        super().__init__(*offsets)
+        self._param_names = [f'off{i}' for i in range(1, self._parsize)]
+        self._param_names += ['mean']
+
+    def time_bins(self):
+        _1 = self.time[np.ediff1d(self.obsid, 0, None) != 0]
+        _2 = self.time[np.ediff1d(self.obsid, None, 0) != 0]
+        offset_times = np.mean((_1, _2), axis=0)
+        return np.sort(np.r_[self.time[0], offset_times])
+
+    @array_input
+    def __call__(self, t):
+        offsets, c = self.pars[:-1], self.pars[-1]
+        offsets = np.pad(offsets, (0, 1))
+
+        if t.size == self.time.size:
+            ii = self.ii
+        else:
+            time_bins = self.time_bins()
+            ii = np.digitize(t, time_bins) - 1
+
+        m = np.full_like(t, c) + np.take(offsets, ii)
+        return m
 
 
 
