@@ -4,8 +4,8 @@ from scipy.stats import multivariate_normal
 from gpyrn import _gp
 
 class inference(object):
-    """ 
-    Class to perform mean field variational inference for GPRNs. 
+    """
+    Mean-field variational inference for GPRNs.
     See Nguyen & Bonilla (2013) for more information.
     
     Parameters
@@ -15,38 +15,45 @@ class inference(object):
     time: array
         Time coordinates
     *args: arrays
-        The actual data (or components), it needs be given in order of data1, 
-        data1error, data2, data2error, etc...
-    """ 
-    def  __init__(self, num_nodes, time, *args):
-        #number of node functions; f(x) in Wilson et al. (2012)
+        The observed data in the following order:
+            y1, y1error, y2, y2error, ...
+    """
+
+    def __init__(self, num_nodes, time, *args):
+        # number of node functions; f(x) in Wilson et al. (2012)
         self.num_nodes = num_nodes
         self.q = num_nodes
-        #array of the time
-        self.time = time 
-        #number of observations, N in Wilson et al. (2012)
+        # array of the time
+        self.time = time
+        # number of observations, N in Wilson et al. (2012)
         self.N = self.time.size
-        #the data, it should be given as data1, data1error, data2, ...
-        self.args = args 
-        #number of outputs y(x); p in Wilson et al. (2012)
-        self.p = int(len(self.args)/2)
-        #total number of weights, we will have q*p weights in total
-        self.qp =  self.q * self.p
-        self.d = self.time.size * self.q *(self.p+1)
-        #to organize the data we now join everything
-        self.tt = np.tile(time, self.p) #"extended" time
+
+        # check if the input was correct
+        msg = 'Number of observed data arrays should be even: y1, y1error, ...'
+        assert len(args) % 2 == 0, msg
+
+        # the data, it should be given as data1, data1error, data2, ...
+        self.args = args
+        # number of outputs y(x); p in Wilson et al. (2012)
+        self.p = int(len(self.args) / 2)
+        # total number of weights, we will have q*p weights in total
+        self.qp = self.q * self.p
+        self.d = self.time.size * self.q * (self.p + 1)
+        # to organize the data we now join everything
+        self.tt = np.tile(time, self.p)  # "extended" time
+
         ys = []
         ystd = []
         yerrs = []
-        for i,j  in enumerate(args):
-            if i%2 == 0:
+        for i, j in enumerate(args):
+            if i % 2 == 0:
                 ys.append(j)
                 ystd.append(np.std(j))
             else:
                 yerrs.append(j)
         self.ystd = np.array(ystd).reshape(self.p, 1)
-        self.y = np.array(ys).reshape(self.p, self.N) #matrix p*N of outputs
-        self.yerr = np.array(yerrs).reshape(self.p, self.N) #matrix p*N of errors
+        self.y = np.array(ys).reshape(self.p, self.N)  # matrix p*N of outputs
+        self.yerr = np.array(yerrs).reshape(self.p, self.N)  # matrix p*N of errors
         self.yerr2 = self.yerr**2
         #check if the input was correct
         assert int((i+1)/2) == self.p, \
