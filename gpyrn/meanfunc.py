@@ -19,9 +19,9 @@ def array_input(f):
 class MeanModel():
     """ Class for our mean functions"""
     _parsize = 0
+
     def __init__(self, *pars):
-        self.pars = list(pars)
-        #np.array(pars, dtype=float)
+        self.pars = np.array(pars, dtype=float)
 
     def __repr__(self):
         """ Representation of each instance """
@@ -31,30 +31,44 @@ class MeanModel():
     @classmethod
     def initialize(cls):
         """ Initialize instance, setting all parameters to 0. """
-        return cls(*([0.]*cls._parsize))
+        return cls(*([0.] * cls._parsize))
+
+    def get_parameters(self):
+        return self.pars
+
+    @array_input
+    def set_parameters(self, p):
+        msg = f'too few parameters for mean {self.__class__.__name__}'
+        assert len(p) >= self.pars.size, msg
+        if len(p) > self.pars.size:
+            p = list(p)
+            self.pars = np.array(p[:self.pars.size], dtype=float)
+            for _ in range(self.pars.size):
+                p.pop(0)
+            return np.array(p)
+        else:
+            self.pars = p
 
     def __add__(self, b):
         return Sum(self, b)
+
     def __radd__(self, b):
         return self.__add__(b)
+
+    def __mul__(self, b):
+        return Product(self, b)
+
+    def __rmul__(self, b):
+        return self.__mul__(b)
 
 
 class Sum(MeanModel):
     """ Sum of two mean functions """
     def __init__(self, m1, m2):
         self.m1, self.m2 = m1, m2
-
-    @property
-    def _parsize(self):
-        return self.m1._parsize + self.m2._parsize
-
-    @property
-    def pars(self):
-        """ Sum of parameters? """
-        return self.m1.pars + self.m2.pars
-
-    def initialize(self):
-        return
+        self._param_names = tuple(list(m1._param_names) + list(m2._param_names))
+        self._parsize = m1._parsize + m2._parsize
+        self.pars = np.r_[self.m1.pars, self.m2.pars]
 
     def __repr__(self):
         return "{0} + {1}".format(self.m1, self.m2)
@@ -62,6 +76,22 @@ class Sum(MeanModel):
     @array_input
     def __call__(self, t):
         return self.m1(t) + self.m2(t)
+
+
+class Product(MeanModel):
+    """ Product of two mean functions """
+    def __init__(self, m1, m2):
+        self.m1, self.m2 = m1, m2
+        self._param_names = tuple(list(m1._param_names) + list(m2._param_names))
+        self._parsize = m1._parsize + m2._parsize
+        self.pars = np.r_[self.m1.pars, self.m2.pars]
+
+    def __repr__(self):
+        return "{0} * {1}".format(self.m1, self.m2)
+
+    @array_input
+    def __call__(self, t):
+        return self.m1(t) * self.m2(t)
 
 
 ##### f(x) = a #################################################################
