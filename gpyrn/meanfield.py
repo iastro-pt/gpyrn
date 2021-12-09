@@ -67,11 +67,13 @@ class inference(object):
         
         Parameters
         ----------
-        
+        means : list of instances of meanfunc
+        time : array, optional
+
         Returns
         -------
-        m: float
-            Value of the mean
+        m: array
+            Value of the mean evaluated at `time` or `self.time`
         """
         if time is None:
             N = self.time.size
@@ -80,7 +82,7 @@ class inference(object):
                 if meanfun is None:
                     continue
                 else:
-                    m[i*N : (i+1)*N] = meanfun(self.time)
+                    m[i * N:(i + 1) * N] = meanfun(self.time)
         else:
             N = time.size
             tt = np.tile(time, self.p)
@@ -89,54 +91,58 @@ class inference(object):
                 if meanfun is None:
                     continue
                 else:
-                    m[i*N : (i+1)*N] = meanfun(time)
+                    m[i * N:(i + 1) * N] = meanfun(time)
         return m
-    
-    
+
+
 ##### To create matrices and samples ###########################################
-    def _KMatrix(self, kernel, time = None):
+
+
+    def _KMatrix(self, kernel, time=None):
         """
-        Returns the covariance matrix created by evaluating a given kernel 
-        at inputs time. 
-        For stability issues with the GPRN a 1e-6 nugget is needed.
-        
+        Returns the covariance matrix created by evaluating a given kernel at
+        inputs time. For stability issues with the GPRN a 1e-6 nugget is needed.
+
         Parameters
         ----------
-        
+        kernel : instance of covfunc
+        time : array, optional
+
         Returns
         -------
         K: array
             Matrix of a covariance function
         """
         r = time[:, None] - time[None, :]
-        K = kernel(r) + 1e-6*np.diag(np.diag(np.ones_like(r)))
-        K[np.abs(K)<1e-12] = 0.
+        K = kernel(r) + 1e-6 * np.diag(np.diag(np.ones_like(r)))
+        # K[np.abs(K) < 1e-12] = 0.
         return K
-    
-    
-    def _tinyNuggetKMatrix(self, kernel, time = None):
+
+
+    def _tinyNuggetKMatrix(self, kernel, time=None):
         """
-        To be used in Prediction()
-        Returns the covariance matrix created by evaluating a given kernel 
-        at inputs time with the tiniest stability nugget possible.
-        
+        To be used in Prediction(). Returns the covariance matrix created by
+        evaluating a given kernel at inputs time with the tiniest stability
+        nugget possible.
+
         Returns
         -------
-        K: array
-            Matrix of a covariance function
+        K: array Matrix of a covariance function
         """
         r = time[:, None] - time[None, :]
-        K = kernel(r) + 1.25e-12*np.diag(np.diag(np.ones_like(r)))
+        K = kernel(r) + 1.25e-12 * np.diag(np.diag(np.ones_like(r)))
         return K
-    
-    
+
+
     def _predictKMatrix(self, kernel, time):
         """
         To be used in Prediction()
-        
+
         Parameters
         ----------
-        
+        kernel : instance of covfunc
+        time : array, optional
+
         Returns
         -------
         K: array
@@ -145,11 +151,10 @@ class inference(object):
         if time.size == 1:
             r = time - self.time[None, :]
         else:
-            r = time[:,None] - self.time[None,:]
-        K = kernel(r) 
-        return K
-    
-    
+            r = time[:, None] - self.time[None, :]
+        return kernel(r)
+
+
     def _u_to_fhatW(self, u):
         """
         Given an array of values, divides it in the corresponding nodes (f hat)
@@ -169,8 +174,8 @@ class inference(object):
         f = u[:self.q * self.N].reshape((1, self.q, self.N))
         w = u[self.q * self.N:].reshape((self.p, self.q, self.N))
         return f, w
-    
-    
+
+
     def _cholNugget(self, matrix, maximum=1000):
         """
         Returns the cholesky decomposition to a given matrix, if it is not
@@ -207,8 +212,8 @@ class inference(object):
                 finally:
                     n += 1
             raise LinAlgError("Not positive definite, even with nugget.")
-            
-            
+
+
     def _initMuVar(self, nodes, weights, jitter):
         a1 = [n.pars[0] for n in nodes]
         a2 = [w.pars[0] for w in weights]
@@ -223,14 +228,14 @@ class inference(object):
         mu = np.concatenate((mean1, mean2), axis=None)
         var = np.concatenate((var1, var2), axis=None)
         return mu, var
-    
-    
+
+
     def _randomMuVar(self):
         mu = np.random.randn(self.d, 1)
         var = np.random.rand(self.d, 1)
         return mu, var
-    
-    
+
+
     def sampleIt(self, latentFunc, time=None):
         """
         Returns samples from the kernel
@@ -253,18 +258,20 @@ class inference(object):
         K = self._tinyNuggetKMatrix(latentFunc, time)
         normal = multivariate_normal(mean, K, allow_singular=True).rvs()
         return normal
-    
-    
+
+
 ##### Mean-Field Inference functions ##########################################
-    def ELBOcalc(self, nodes, weights, means, jitter, iterations = 10000,
-                     mu = None, var = None):
+
+
+    def ELBOcalc(self, nodes, weights, means, jitter, iterations=10000,
+                 mu=None, var=None):
         """
         Function to use to calculate the evidence lower bound
-        
+
         Parameters
         ----------
         nodes: array
-            Node functions 
+            Node functions
         weights: array
             Weight functions
         means: array
@@ -352,11 +359,11 @@ class inference(object):
             New variational means
         new_var: array
             New variational variances
-        """ 
+        """
         #to separate the variational parameters between the nodes and weights
         muF, muW = self._u_to_fhatW(mu.flatten())
         varF, varW = self._u_to_fhatW(var.flatten())
-        sigmaF, muF, sigmaW, muW = self._updateSigMu(Kf, Kw, y, jitt2, 
+        sigmaF, muF, sigmaW, muW = self._updateSigMu(Kf, Kw, y, jitt2,
                                                      muF, varF, muW, varW)
         #new mean and var for the nodes
         muF = muF.reshape(1, self.q, self.N)
@@ -378,13 +385,13 @@ class inference(object):
         LogL = self._expectedLogLike(y, jitt2, sigmaF, muF, sigmaW, muW)
         ELBO = (LogL + LogP + Ent) /self.q  #Evidence Lower Bound
         return ELBO, new_mu, new_var, sigmaF, sigmaW
-    
-    
+
+
     def _updateSigMu(self, Kf, Kw, y, jitt2, muF, varF, muW, varW):
         """
         Efficient closed-form updates fot variational parameters. This
         corresponds to eqs. 16, 17, 18, and 19 of Nguyen & Bonilla (2013)
-        
+
         Parameters
         ----------
         Kf: array
@@ -457,13 +464,13 @@ class inference(object):
         sigma_w = np.array(sigma_w).reshape(self.q, self.p, self.N, self.N)
         mu_w = np.array(muW)
         return sigma_f, mu_f, sigma_w, mu_w
-    
-    
+
+
     def _expectedLogLike(self, y, jitt2, sigma_f, mu_f, sigma_w, mu_w):
         """
-        Calculates the expected log-likelihood in mean-field inference, 
+        Calculates the expected log-likelihood in mean-field inference,
         corresponds to eq.14 in Nguyen & Bonilla (2013)
-        
+
         Parameters
         ----------
         y: array
@@ -505,11 +512,11 @@ class inference(object):
                                 /(jitt2[p]+self.yerr2[p,:]))
         logl += -0.5* value
         return logl
-    
-    
+
+
     def _expectedLogPrior(self, Kf, Kw, Lf, Lw, sigma_f, mu_f, sigma_w, mu_w):
         """
-        Calculates the expection of the log prior wrt q(f,w) in mean-field 
+        Calculates the expection of the log prior wrt q(f,w) in mean-field
         inference, corresponds to eq.15 in Nguyen & Bonilla (2013)
         
         Parameters
@@ -548,7 +555,7 @@ class inference(object):
             trace = np.trace(np.linalg.solve(Kf[j], sumSigmaF))
             first_term += -logKf - 0.5*(muKmu + trace)
             for i in range(self.p):
-                muK = np.linalg.solve(Lw[j,i,:,:], muW[j,i]) 
+                muK = np.linalg.solve(Lw[j,i,:,:], muW[j,i])
                 muKmu = muK @ muK
                 trace = np.trace(np.linalg.solve(Kw[j,i,:,:], sigma_w[j,i,:,:]))
                 second_term += -np.float(np.sum(np.log(np.diag(Lw[j,i,:,:]))))\
@@ -556,8 +563,8 @@ class inference(object):
         const = -0.5*self.N*self.q*(self.p+1)*np.log(2*np.pi)
         logp = first_term + second_term + const
         return logp
-    
-    
+
+
     def _entropy(self, sigma_f, sigma_w):
         """
         Calculates the entropy in mean-field inference, corresponds to eq.14 
