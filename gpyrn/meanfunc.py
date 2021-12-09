@@ -97,14 +97,16 @@ class Product(MeanModel):
 ##### f(x) = a #################################################################
 class Constant(MeanModel):
     """  A constant offset mean function """
+    _param_names = 'c',
     _parsize = 1
+
     def __init__(self, c):
         super(Constant, self).__init__(c)
-        self.c = c
 
     @array_input
     def __call__(self, t):
-        return np.full(t.shape, self.c)
+        return np.full(t.shape, self.pars[0])
+
 
 
 ##### f(x) = ax + b ############################################################
@@ -113,7 +115,9 @@ class Linear(MeanModel):
     A linear mean function
     m(t) = slope * t + intercept
     """
+    _param_names = ('slope', 'intercept')
     _parsize = 2
+
     def __init__(self, slope, intercept):
         super(Linear, self).__init__(slope, intercept)
         self.slope, self.intercept = slope, intercept
@@ -121,7 +125,7 @@ class Linear(MeanModel):
     @array_input
     def __call__(self, t):
         tmean = t.mean()
-        return self.pars[0] * (t-tmean) + self.pars[1]
+        return self.pars[0] * (t - tmean) + self.pars[1]
 
 
 ##### f(x) = ax**2 + bx + c ####################################################
@@ -130,10 +134,11 @@ class Parabola(MeanModel):
     A 2nd degree polynomial mean function
     m(t) = quad * t**2 + slope * t + intercept
     """
+    _param_names = ('slope', 'intercept', 'quadratic')
     _parsize = 3
+
     def __init__(self, quad, slope, intercept):
         super(Parabola, self).__init__(quad, slope, intercept)
-        self.quad, self.slope, self.intercept = quad, slope, intercept
 
     @array_input
     def __call__(self, t):
@@ -146,11 +151,11 @@ class Cubic(MeanModel):
     A 3rd degree polynomial mean function
     m(t) = cub * t**3 + quad * t**2 + slope * t + intercept
     """
+    _param_names = ('slope', 'intercept', 'quadratic', 'cubic')
     _parsize = 4
+
     def __init__(self, cub, quad, slope, intercept):
         super(Cubic, self).__init__(cub, quad, slope, intercept)
-        self.cub = cub
-        self.quad, self.slope, self.intercept = quad, slope, intercept
 
     @array_input
     def __call__(self, t):
@@ -160,18 +165,19 @@ class Cubic(MeanModel):
 ##### f(x) = a**2 * sine(2*pi*t/b + c) + d #####################################
 class Sine(MeanModel):
     """
-        A sinusoidal mean function
-        m(t) = amplitude**2 * sine( (2*pi*t/P) + phase) + displacement
+    A sinusoidal mean function
+    m(t) = amplitude * sin( 2*pi*t/P + phase)
     """
+    _param_names = ('amplitude', 'period', 'phase')
     _parsize = 3
-    def __init__(self, amp, P, phi, D):
-        super(Sine, self).__init__(amp, P, phi, D)
-        self.amp, self.P, self.phi, self.D = amp, P, phi, D
+
+    def __init__(self, amplitude, period, phase):
+        super(Sine, self).__init__(amplitude, period, phase)
 
     @array_input
     def __call__(self, t):
-        return self.pars[0] * np.sin((2*np.pi*t/self.pars[1]) + self.pars[2]) \
-                + self.pars[3]
+        A, P, φ = self.pars
+        return A * np.sin((2 * np.pi * t / P) + φ)
 
 
 ##### f(x) = K*(e*np.cos(w+np.cos(w+nu(x))) + d ################################
