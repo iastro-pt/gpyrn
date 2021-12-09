@@ -1,13 +1,19 @@
+from itertools import chain
+import time as time_module
+from gpyrn.meanfunc import array_input
+
 import numpy as np
 from scipy.linalg import cholesky, LinAlgError
 from scipy.stats import multivariate_normal
+from scipy.optimize import minimize
 from gpyrn import _gp
+
 
 class inference(object):
     """
     Mean-field variational inference for GPRNs.
     See Nguyen & Bonilla (2013) for more information.
-    
+
     Parameters
     ----------
     num_nodes: int
@@ -55,16 +61,186 @@ class inference(object):
         self.y = np.array(ys).reshape(self.p, self.N)  # matrix p*N of outputs
         self.yerr = np.array(yerrs).reshape(self.p, self.N)  # matrix p*N of errors
         self.yerr2 = self.yerr**2
-        #check if the input was correct
-        assert int((i+1)/2) == self.p, \
-        'Given data and number of components dont match'
-        
-        
-##### mean functions definition ###############################################
+
+        self._components_set = False
+        self._frozen_mask = np.array([])
+        self._mu, self._var = None, None
+
+    def set_components(self, nodes, weights, means, jitters):
+        self.nodes = nodes
+        self.weights = weights
+        self.means = means
+        self.jitters = np.array(jitters, dtype=float)
+        self._components_set = True
+
+    def get_parameters(self, nodes=None, weights=None, means=None,
+                       jitters=None, include_frozen=False):
+        nones = [
+            nodes is None, weights is None, means is None, jitters is None
+        ]
+        if not self._components_set and all(nones):
+            msg = 'Cannot get parameters. '
+            msg += 'Provide arguments or run set_components before.'
+            raise ValueError(msg)
+
+        if self._components_set:
+            p = []
+            for node in self.nodes:
+                p.append(node.get_parameters())
+            for weight in self.weights:
+                p.append(weight.get_parameters())
+            for mean in self.means:
+                p.append(mean.get_parameters())
+            for jitter in self.jitters:
+                p.append(np.array([jitter]))
+        else:
+            p = []
+            if nodes is not None:
+                for node in nodes:
+                    p.append(node.get_parameters())
+            if weights is not None:
+                for weight in weights:
+                    p.append(weight.get_parameters())
+            if means is not None:
+                for mean in means:
+                    p.append(mean.get_parameters())
+            if jitters is not None:
+                for jitter in jitters:
+                    p.append(np.array([jitter]))
+
+        if include_frozen:
+            return np.concatenate(p).ravel()
+        else:
+            return np.concatenate(p).ravel()[~self.frozen_mask]
+
+    @array_input
+    def set_parameters(self, parameters):
+        msg = 'GPRN components not set, use set_components'
+        assert self._components_set, msg
+        all_parameters = self.get_parameters(include_frozen=True)
+        n_free_parameters = self.n_parameters - self.frozen_mask.sum()
+
+        if parameters.size == self.n_parameters:
+            # all parameters provided, even if some may be frozen
+            # we ignore the frozen ones
+            parameters[self.frozen_mask] = all_parameters[self.frozen_mask]
+
+        elif parameters.size == n_free_parameters:
+            # only non-frozen parameters were provided, fill in the frozen ones
+            for i, par in enumerate(all_parameters):
+                if self.frozen_mask[i]:
+                    parameters = np.insert(parameters, i, par)
+
+        else:
+            # wrong numer of parameters provided
+            NP = parameters.size
+            ep = self.n_parameters
+            fp = n_free_parameters
+            msg = f'Wrong number of parameters provided: got {NP}, '
+            if ep == fp:
+                msg += f'expected {ep}'
+            else:
+                msg += f'expected {ep} (all) or {fp} (not frozen)'
+            raise ValueError(msg)
+
+        it = [self.nodes, self.weights, self.means]
+        for component in chain.from_iterable(it):
+            parameters = component.set_parameters(parameters)
+        self.jitters = parameters
+
+    @property
+    def n_parameters(self):
+        msg = 'GPRN components not set, use set_components'
+        assert self._components_set, msg
+        n = 0
+        it = [self.nodes, self.weights, self.means]
+        for component in chain.from_iterable(it):
+            n += component.pars.size
+        n += self.jitters.size
+        return n
+
+    @property
+    def parameters_dict(self):
+        msg = 'GPRN components not set, use set_components'
+        assert self._components_set, msg
+
+        p = {}
+        for i, node in enumerate(self.nodes, start=1):
+            for par, val in zip(node._param_names, node.pars):
+                p[f'node{i}.{par}'] = val
+        for i, weight in enumerate(self.weights, start=1):
+            for par, val in zip(weight._param_names, weight.pars):
+                p[f'weight{i}.{par}'] = val
+        for i, mean in enumerate(self.means, start=1):
+            for par, val in zip(mean._param_names, mean.pars):
+                p[f'mean{i}.{par}'] = val
+        for i, jit in enumerate(self.jitters, start=1):
+            p[f'jitter{i}'] = jit
+        return p
+
+    def freeze_parameter(self, index=None, name=None):
+        self.frozen_mask
+        if index is None and name is None:
+            raise ValueError('Provide either index or name')
+        if name is None:
+            self._frozen_mask[index] = True
+        elif index is None:
+            if '*' in name:
+                names = list(self.parameters_dict.keys())
+                name = name.replace('*', '')
+                for index, known_name in enumerate(names):
+                    if name in known_name:
+                        self._frozen_mask[index] = True
+            else:
+                msg = f'Name "{name}" not found in parameters_dict'
+                assert name in self.parameters_dict, msg
+                index = list(self.parameters_dict.keys()).index(name)
+                self._frozen_mask[index] = True
+
+    fix_parameter = freeze_parameter
+
+    def thaw_parameter(self, index=None, name=None):
+        self.frozen_mask
+        if index is None and name is None:
+            raise ValueError('Provide either index or name')
+        if name is None:
+            self._frozen_mask[index] = False
+        elif index is None:
+            if '*' in name:
+                names = list(self.parameters_dict.keys())
+                name = name.replace('*', '')
+                for index, known_name in enumerate(names):
+                    if name in known_name:
+                        self._frozen_mask[index] = False
+            else:
+                msg = f'Name "{name}" not found in parameters_dict'
+                assert name in self.parameters_dict, msg
+                index = list(self.parameters_dict.keys()).index(name)
+                self._frozen_mask[index] = False
+
+    free_parameter = thaw_parameter
+
+    @property
+    def frozen_mask(self):
+        msg = 'GPRN components not set, use set_components'
+        assert self._components_set, msg
+        if self._frozen_mask.size == 0:
+            self._frozen_mask = np.full(self.n_parameters, False, dtype=bool)
+        return self._frozen_mask
+
+    @frozen_mask.setter
+    def frozen_mask(self, mask):
+        msg = 'Do not set frozen_mask, use thaw_parameter/freeze_parameter'
+        raise NotImplementedError(msg)
+
+
+##### mean functions definition ################################################
+
+
     def _mean(self, means, time=None):
         """
         Returns the values of the mean functions
-        
+
         Parameters
         ----------
         means : list of instances of meanfunc
@@ -279,12 +455,12 @@ class inference(object):
         jitter: array
             Jitter terms
         iterations: int
-            Number of iterations 
-        mu: array
-            Variational means
-        var: array
-            Variational variances
-            
+            Maximum number of iterations allowed in ELBO calculation
+        mu: array or str, optional
+            Variational means or 'init', 'random', or 'previous'
+        var: array or str, optional
+            Variational variances or 'init', 'random', or 'previous'
+
         Returns
         -------
         ELBO: array
@@ -294,12 +470,20 @@ class inference(object):
         var: array
             Optimized variational variance (diagonal of sigma)
         """
-        #initial variational parameters
-        if mu == 'random' and var == 'random':
+        # initial variational parameters
+        if mu is None and var is None:
+            mu = var = 'init'
+
+        if mu == 'previous' and var == 'previous':
+            if self._mu is not None:
+                mu, var = self._mu, self._var
+            else:
+                mu, var = self._initMuVar(nodes, weights, jitter)
+        elif mu == 'random' and var == 'random':
             mu, var = self._randomMuVar()
-        if mu == 'init' and var == 'init':
+        elif mu == 'init' and var == 'init':
             mu, var = self._initMuVar(nodes, weights, jitter)
-            
+
         jitt2 = np.array(jitter)**2
         Kf = np.array([self._KMatrix(i, self.time) for i in nodes])
         Kw = np.array([self._KMatrix(j, self.time) for j in weights])
@@ -307,27 +491,30 @@ class inference(object):
         Lw = np.array([self._cholNugget(j)[0] for j in Kw])
         y = np.concatenate(self.y) - self._mean(means)
         y = np.array(np.array_split(y, self.p))
-        
-        #To add new elbo values inside
+
+        # To add new elbo values inside
         ELBO, _, _, _, _ = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2, mu, var)
         elboArray = np.array([ELBO])
         iterNumber = 0
         while iterNumber < iterations:
-            #Optimize mu and var analytically
-            ELBO, mu, var, sigF, sigW = self.ELBOaux(Kf, Kw, Lf, Lw, y, 
-                                                     jitt2, mu, var)
+            # Optimize mu and var analytically
+            ELBO, mu, var, sigF, sigW = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2,
+                                                     mu, var)
             elboArray = np.append(elboArray, ELBO)
             iterNumber += 1
-            #Stoping criteria:
+            # Stoping criteria:
             if iterNumber > 5:
                 means = np.mean(elboArray[-5:])
                 criteria = np.abs(np.std(elboArray[-5:]) / means)
-                if criteria < 1e-3 and criteria !=0:
+                if criteria < 1e-3 and criteria != 0:
+                    self._mu = mu
+                    self._var = var
                     return ELBO, mu, var
+
         print('\nMax iterations reached')
         return ELBO, mu, var
-    
-    
+
+
     def ELBOaux(self, Kf, Kw, Lf, Lw, y, jitt2, mu, var):
         """
         Evidence Lower bound to use in ELBOcalc()
@@ -591,38 +778,110 @@ class inference(object):
                 entropy += np.sum(np.log(np.diag(L2[0])))
         const = 0.5*self.q*(self.p+1)*self.N*(1+np.log(2*np.pi))
         return entropy + const
-    
-    
-    def Prediction(self, node, weights, means, jitters, tstar, mu, var,
-                   separate = False):
+
+
+    def nELBO(self, parameters):
+        msg = 'GPRN components not set, use set_components'
+        assert self._components_set, msg
+        self.set_parameters(parameters)
+
+        start = time_module.time()
+        elbo, _, _ = self.ELBOcalc(self.nodes, self.weights, self.means,
+                                   self.jitters, mu='previous', var='previous')
+        end = time_module.time()
+
+        spaces = 20*' '
+        print(f'ELBO={elbo:7.2f} (took {1e3*(end-start):5.2f} ms){spaces}',
+              end='\r', flush=True)
+        return -elbo
+
+
+    def optimize(self, vars=None, **kwargs):
+        """
+        Optimize (maximize) the ELBO. If provided, `vars` controls the
+        parameters which are free during the optimization.
+
+        Arguments
+        ---------
+        vars : str or list, optional
+            If provided, this defines the parameters included in the
+            optimization process. Options are
+                vars = 'parameter_name'
+                    optimize *only* parameter_name, all others are fixed
+                vars = '-parameter_name'
+                    optimize all parameters *except* parameter_name
+                vars = [list of parameter_names]
+                    optimize parameter_names and hold the others fixed
+        **kwargs : dict
+            Keyword arguments passed directly to scipy.optimize.minimize
+        """
+        if vars is not None:
+            if isinstance(vars, str):
+                if '-' in vars:
+                    vars = vars.replace('-', '')
+                    self.thaw_parameter(name='*')    # thaw all
+                    self.freeze_parameter(name=vars) # freeze vars
+                else:
+                    self.freeze_parameter(name='*') # freeze all
+                    self.thaw_parameter(name=vars)  # thaw vars
+            elif isinstance(vars, list):
+                self.freeze_parameter(name='*') # freeze all
+                for var in vars:
+                    self.thaw_parameter(name=var) # except all vars
+            else:
+                msg = f'`vars` should be str or list, got {type(vars)}'
+                raise ValueError(msg)
+
+        res = minimize(self.nELBO, self.get_parameters(), **kwargs)
+        return res
+
+
+    def Prediction(self, nodes=None, weights=None, means=None, jitters=None,
+                   tstar=None, mu=None, var=None, separate=False):
         """
         Prediction for mean-field inference
         
         Parameters
         ----------
-        node: array
+        nodes: array
             Node functions 
-        weight: array
+        weights: array
             Weight function
         means: array
             Mean functions
-        jitter: array
+        jitters: array
             Jitter terms
         tstar: array
             Predictions time
-        mu: array
-            Variational means
-        var: array
-            Variational variances
+        mu: array, optional
+            Variational means, use self._mu if not provided
+        var: array, optional
+            Variational variances, use self._var if not provided
         separate: bool
-            True to return nodes and weights predictives separately
+            Whether to return predictive for nodes and weights separately
 
         Returns
         -------
-        predictives: array
+        predictive mean(s): array
             Predicted means
-        predictivesVar: array
+        predictive variance(s): array
+            Predictive variances
         """
+        if nodes is None:
+            nodes = self.nodes
+        if weights is None:
+            weights = self.weights
+        if means is None:
+            means = self.means
+        if jitters is None:
+            jitters = self.jitters
+
+        if tstar is None:
+            tstar = self.time
+
+        if mu is None and var is None:
+            mu, var = self._mu, self._var
+
         muF, muW = self._u_to_fhatW(mu.flatten())
         varF, varW = self._u_to_fhatW(var.flatten())
         meanVal = self._mean(means, tstar)
@@ -635,20 +894,20 @@ class inference(object):
         wPred, wVar = [], []
         for q in range(self.q):
             gpObj = _gp.GP(self.time, muF[:,q,:])
-            n,nv = gpObj.prediction(node[q], tstar, muF[:,q,:].reshape(self.N), 
+            n,nv = gpObj.prediction(nodes[q], tstar, muF[:,q,:].reshape(self.N),
                                     varF[:,q,:].reshape(self.N))
             nPred.append(n)
             nVar.append(nv)
             for p in range(self.p):
                 gpObj = _gp.GP(self.time, muW[p,q,:])
-                w,wv = gpObj.prediction(weights[q,p], tstar, 
-                                        muW[p,q,:].reshape(self.N), 
+                w,wv = gpObj.prediction(weights[q,p], tstar,
+                                        muW[p,q,:].reshape(self.N),
                                         varW[p,q,:].reshape(self.N))
                 wPred.append(w)
                 wVar.append(wv)
         nPred, nVar = np.array(nPred), np.array(nVar)
-        wPredd = np.array(wPred).reshape(self.q, self.p, tstar.size) 
-        wVarr = np.array(wVar).reshape(self.q, self.p, tstar.size) 
+        wPredd = np.array(wPred).reshape(self.q, self.p, tstar.size)
+        wVarr = np.array(wVar).reshape(self.q, self.p, tstar.size)
         predictives = np.zeros((tstar.size, self.p))
         predictivesVar = np.zeros((tstar.size, self.p))
         for p in range(self.p):
@@ -661,8 +920,8 @@ class inference(object):
         if separate:
             predictives = np.array(predictives)
             sepPredictives = np.array([nPred,wPred], dtype=object)
-            return predictives, predictivesVar, tstar, sepPredictives
-        return predictives, predictivesVar, tstar
-    
-    
+            return predictives, predictivesVar, sepPredictives
+        return predictives, predictivesVar
+
+
 ### END
