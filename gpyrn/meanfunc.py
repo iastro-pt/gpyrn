@@ -74,6 +74,20 @@ class Sum(MeanModel):
         self._parsize = m1._parsize + m2._parsize
         self.pars = np.r_[self.m1.pars, self.m2.pars]
 
+    @array_input
+    def set_parameters(self, p):
+        msg = f'too few parameters for mean {self.__class__.__name__}'
+        assert len(p) >= self.pars.size, msg
+        if len(p) > self.pars.size:
+            self.pars = np.array(p[:self.pars.size], dtype=float)
+            p = self.m1.set_parameters(p)
+            p = self.m2.set_parameters(p)
+            return p
+        else:
+            self.pars = p
+            p = self.m1.set_parameters(p)
+            p = self.m2.set_parameters(p)
+
     def __repr__(self):
         return "{0} + {1}".format(self.m1, self.m2)
 
@@ -89,6 +103,20 @@ class Product(MeanModel):
         self._param_names = tuple(list(m1._param_names) + list(m2._param_names))
         self._parsize = m1._parsize + m2._parsize
         self.pars = np.r_[self.m1.pars, self.m2.pars]
+
+    @array_input
+    def set_parameters(self, p):
+        msg = f'too few parameters for mean {self.__class__.__name__}'
+        assert len(p) >= self.pars.size, msg
+        if len(p) > self.pars.size:
+            self.pars = np.array(p[:self.pars.size], dtype=float)
+            p = self.m1.set_parameters(p)
+            p = self.m2.set_parameters(p)
+            return p
+        else:
+            self.pars = p
+            p = self.m1.set_parameters(p)
+            p = self.m2.set_parameters(p)
 
     def __repr__(self):
         return "{0} * {1}".format(self.m1, self.m2)
