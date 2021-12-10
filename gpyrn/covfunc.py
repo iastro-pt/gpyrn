@@ -1,17 +1,20 @@
 """
 Covariance functions to use on the GPRN
 """
+from gpyrn.meanfunc import array_input
 import numpy as np
+
 
 class covFunction():
     """
-    Definition the covariance functions (kernels) of our GPRN, by default and
-    because it simplifies my life, all kernels include a white noise term
+    A base class for covariance functions (kernels) used for nodes and weights
+    in the GPRN.
     """
     def __init__(self, *args):
         """ Puts all kernel arguments in an array pars """
         self.pars = np.array(args, dtype=float)
-        self.pars[self.pars > 1e50] = 1e50
+        # self.pars[self.pars > 1e50] = 1e50
+
     def __call__(self, r, t1=None, t2=None):
         """
         r = t - t'
@@ -22,15 +25,38 @@ class covFunction():
 
     def __repr__(self):
         """ Representation of each kernel instance """
-        return "{0}({1})".format(self.__class__.__name__,
-                                 ", ".join(map(str, self.pars)))
+        if hasattr(self, '_param_names'):
+            pars = ', '.join(
+                [f'{p}={v}' for p, v in zip(self._param_names, self.pars)])
+        else:
+            pars = ', '.join(map(str, self.pars))
+        return f"{self.__class__.__name__}({pars})"
+
+    def get_parameters(self):
+        return self.pars
+
+    @array_input
+    def set_parameters(self, p):
+        msg = f'too few parameters for kernel {self.__class__.__name__}'
+        assert len(p) >= self.pars.size, msg
+        if len(p) > self.pars.size:
+            p = list(p)
+            self.pars = np.array(p[:self.pars.size], dtype=float)
+            for _ in range(self.pars.size):
+                p.pop(0)
+            return np.array(p)
+        else:
+            self.pars = p
 
     def __add__(self, b):
         return Sum(self, b)
+
     def __radd__(self, b):
         return self.__add__(b)
+
     def __mul__(self, b):
         return Multiplication(self, b)
+
     def __rmul__(self, b):
         return self.__mul__(b)
 
@@ -38,15 +64,10 @@ class covFunction():
 class _operator(covFunction):
     """ To allow operations between two kernels """
     def __init__(self, k1, k2):
-        super(_operator, self).__init__(k1, k2)
         self.k1 = k1
         self.k2 = k2
         self.kerneltype = 'complex'
-
-    @property
-    def pars(self):
-        """ Parameters og the two kernels """
-        return np.append(self.k1.pars, self.k2.pars)
+        self.pars = np.r_[self.k1.pars, self.k2.pars]
 
 
 class Sum(_operator):
@@ -56,7 +77,6 @@ class Sum(_operator):
 
     def __repr__(self):
         return "{0} + {1}".format(self.k1, self.k2)
-
 
 
 class Multiplication(_operator):
@@ -71,23 +91,22 @@ class Multiplication(_operator):
 ##### Constant #################################################################
 class Constant(covFunction):
     """
-    This kernel returns its constant argument c with white noise
+    This kernel returns the square of its constant argument c
 
     Parameters
     ----------
     c: float
         Constant
-        
-    Returns
-    -------
     """
-    def __init__(self, c, wn):
-        super(Constant, self).__init__(c, wn)
-        self.tag = 'C'
-        self.c = c
+    _param_names = 'c',
+    _tag = 'C'
+
+    def __init__(self, c):
+        super(Constant, self).__init__(c)
 
     def __call__(self, r):
-        return self.c**2 *np.ones_like(r)
+        c = self.pars[0]
+        return np.full_like(r, c**2)
 
 
 ##### White Noise ##############################################################
@@ -99,19 +118,18 @@ class WhiteNoise(covFunction):
     ----------
     wn: float
         White noise amplitude
-
-    Returns
-    -------
     """
+    _param_names = 'wn',
+    _tag = 'WN'
+
     def __init__(self, wn):
         super(WhiteNoise, self).__init__(wn)
-        self.tag = 'WN'
-        self.wn = wn
 
     def __call__(self, r):
-        if r[0, :].shape == r[:, 0].shape:
-            return self.wn**2 *np.diag(np.diag(np.ones_like(r)))
-        return self.wn**2 *np.ones_like(r)
+        wn = self.pars[0]
+        if r.ndim == 2 and r[0, :].shape == r[:, 0].shape:
+            return wn**2 * np.diag(np.diag(np.ones_like(r)))
+        return np.full_like(r, wn**2)
 
 
 ##### Squared exponential ######################################################
@@ -120,24 +138,21 @@ class SquaredExponential(covFunction):
     Squared Exponential kernel, also known as radial basis function or RBF
     kernel in other works.
 
-    Parameterstoo-many-arguments
+    Parameters
     ----------
     theta: float
         Amplitude
-    l: float
+    ell: float
         Length-scale
-
-    Returns
-    -------
     """
-    def __init__(self, theta, l):
-        super(SquaredExponential, self).__init__(theta, l)
-        self.tag = 'SE'
-        self.theta = theta
-        self.l = l
+    _param_names = 'theta', 'ell'
+    _tag = 'SE'
+
+    def __init__(self, theta, ell):
+        super(SquaredExponential, self).__init__(theta, ell)
 
     def __call__(self, r):
-        return self.pars[0]**2 *np.exp(-0.5 * r**2/self.pars[1]**2)
+        return self.pars[0]**2 * np.exp(-0.5 * r**2 / self.pars[1]**2)
 
 
 ##### Periodic #################################################################
@@ -153,20 +168,16 @@ class Periodic(covFunction):
         Period
     lp: float
         Lenght scale
-
-    Returns
-    -------
     """
+    _param_names = 'theta', 'P', 'lp'
+    _tag = 'P'
+
     def __init__(self, theta, P, lp):
         super(Periodic, self).__init__(theta, P, lp)
-        self.tag = 'P'
-        self.theta = theta
-        self.lp = lp
-        self.P = P
 
     def __call__(self, r):
-        return self.pars[0]**2 *\
-            np.exp(-2*np.sin(np.pi*np.abs(r)/self.pars[1])**2/self.pars[2]**2)
+        θ, P, lp = self.pars
+        return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 / lp**2)
 
 
 ##### Quasi Periodic ###########################################################
@@ -186,56 +197,52 @@ class QuasiPeriodic(covFunction):
         Kernel periodicity
     lp: float
         Length scale of the periodic component
-
-    Returns
-    -------
     """
+    _param_names = 'theta', 'le', 'P', 'lp'
+    _tag = 'QP'
+
     def __init__(self, theta, le, P, lp):
         super(QuasiPeriodic, self).__init__(theta, le, P, lp)
-        self.tag = 'QP'
-        self.theta = theta
-        self.le = le
-        self.P = P
-        self.lp = lp
-        
+
     def __call__(self, r):
-        return self.pars[0]**2 *np.exp(-2*np.sin(np.pi*np.abs(r)/self.pars[2])**2\
-                                       /self.pars[3]**2-r**2/(2*self.pars[1]**2))
+        θ, le, P, lp = self.pars
+        return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 / lp**2 - \
+                             r**2 / (2 * le**2))
 
 
 ##### Rational Quadratic #######################################################
 class RationalQuadratic(covFunction):
     """
     Definition of the rational quadratic kernel.
-    
+
     Parameters
     ----------
-    amplitude: float
+    theta: float
         Amplitude of the kernel
     alpha: float
         Amplitude of large and small scale variations
-    l: float
+    ell: float
         Characteristic lenght scale to define the kernel "smoothness"
     """
-    def __init__(self, amplitude, alpha, l):
-        super(RationalQuadratic, self).__init__(amplitude, alpha, l)
-        self.amplitude = amplitude
-        self.alpha = alpha
-        self.l = l
-        self.params_number = 3
+    _param_names = 'theta', 'alpha', 'ell'
+    _tag = 'RQ'
+
+    def __init__(self, amplitude, alpha, ell):
+        super(RationalQuadratic, self).__init__(theta, alpha, ell)
+
     def __call__(self, r):
-        return self.pars[0]**2 *\
-            (1+0.5*r**2/(self.pars[1]*self.pars[2]**2))**(-self.pars[1])
+        θ, α, ell = self.pars
+        return θ**2 * (1 + 0.5 * r**2 / (α * ell**2))**(-α)
 
 
 ##### RQP kernel ###############################################################
 class RQP(covFunction):
     """
-    Definition of the product between the exponential sine squared kernel
-    and the rational quadratic kernel that we called RQP kernel.
-    If I am thinking this correctly then this kernel should tend to the
-    QuasiPeriodic kernel as alpha increases, although I am not sure if we can
-    say that it tends to the QuasiPeriodic kernel as alpha tends to infinity.
+    Definition of the product between the exponential sine squared kernel and
+    the rational quadratic kernel that we called RQP kernel. If I am thinking
+    this correctly then this kernel should tend to the QuasiPeriodic kernel as
+    alpha increases, although I am not sure if we can say that it tends to the
+    QuasiPeriodic kernel as alpha tends to infinity.
 
     Parameters
     ----------
@@ -243,30 +250,27 @@ class RQP(covFunction):
         Amplitude
     alpha: float
         Alpha of the rational quadratic kernel
-    ell_e, ell_p: float
-        Aperiodic and periodic lenght scales
+    ell_e: float
+        Aperiodic length scale
     P: float
         Periodic repetitions of the kernel
-        
-    Returns
-    -------
+    ell_p: float
+        Periodic length scale
     """
+    _param_names = 'theta', 'alpha', 'ell_e', 'ell_p', 'P'
+    _tag = 'RQP'
+
     def __init__(self, theta, alpha, ell_e, P, ell_p):
         super(RQP, self).__init__(theta, alpha, ell_e, P, ell_p)
-        self.tag = 'RQP'
-        self.theta = theta
-        self.alpha = alpha
-        self.ell_e = ell_e
-        self.P = P
-        self.ell_p = ell_p
 
     def __call__(self, r):
-        return self.theta**2 *np.exp(-2*np.sin(np.pi*np.abs(r)/self.P)**2/self.ell_p**2) \
-                        *(1+r**2/(2*self.alpha*self.ell_e**2))**(-self.alpha)
+        θ, α, ℓe, P, ℓp = self.pars
+        return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 /
+                             ℓp**2) * (1 + r**2 / (2 * α * ℓe**2))**(-α)
 
 
 ##### Cosine ###################################################################
-class CoSINE(covFunction):
+class COSINE(covFunction):
     """
     Definition of the cosine kernel
 
@@ -276,18 +280,15 @@ class CoSINE(covFunction):
         Amplitude
     P: float
         Period
-
-    Returns
-    -------
     """
+    _param_names = 'theta', 'P'
+    _tag = 'COS'
+
     def __init__(self, theta, P):
-        super(CoSINE, self).__init__(theta, P)
-        self.tag = 'COS'
-        self.theta = theta
-        self.P = P
+        super(COSINE, self).__init__(theta, P)
 
     def __call__(self, r):
-        return self.pars[0]**2 *np.cos(2*np.pi*np.abs(r)/self.pars[1])
+        return self.pars[0]**2 * np.cos(2 * np.pi * np.abs(r) / self.pars[1])
 
 
 ##### Laplacian ##############################################################
@@ -299,20 +300,17 @@ class Laplacian(covFunction):
     ----------
     theta: float
         Amplitude
-    l: float
+    ell: float
         Characteristic lenght scale
-
-    Returns
-    -------
     """
-    def __init__(self, theta, l):
-        super(Laplacian, self).__init__(theta, l)
-        self.tag = 'LAP'
-        self.theta = theta
-        self.l = l
-        
+    _param_names = 'theta', 'ell'
+    _tag = 'LAP'
+
+    def __init__(self, theta, ell):
+        super(Laplacian, self).__init__(theta, ell)
+
     def __call__(self, r):
-        return self.pars[0]**2 *np.exp(-np.abs(r)/self.pars[1])
+        return self.pars[0]**2 * np.exp(-np.abs(r) / self.pars[1])
 
 
 ##### Exponential ##############################################################
@@ -324,20 +322,17 @@ class Exponential(covFunction):
     ----------
     theta: float
         Amplitude
-    l: float
+    ell: float
         Characteristic lenght scale
-
-    Returns
-    -------
     """
-    def __init__(self, theta, l):
-        super(Exponential, self).__init__(theta, l)
-        self.tag = 'EXP'
-        self.theta = theta
-        self.l = l
+    _param_names = 'theta', 'ell'
+    _tag = 'EXP'
+
+    def __init__(self, theta, ell):
+        super(Exponential, self).__init__(theta, ell)
 
     def __call__(self, r):
-        return self.pars[0]**2 * np.exp(-np.abs(r)/self.pars[1])
+        return self.pars[0]**2 * np.exp(-np.abs(r) / self.pars[1])
 
 
 ##### Matern 3/2 ###############################################################
@@ -350,21 +345,19 @@ class Matern32(covFunction):
     ----------
     theta: float
         Amplitude
-    l: float
+    ell: float
         Characteristic lenght scale
-
-    Returns
-    -------
     """
-    def __init__(self, theta, l):
-        super(Matern32, self).__init__(theta, l)
-        self.tag = 'M32'
-        self.theta = theta
-        self.ell = l
+    _param_names = 'theta', 'ell'
+    _tag = 'M32'
+
+    def __init__(self, theta, ell):
+        super(Matern32, self).__init__(theta, ell)
 
     def __call__(self, r):
-        return self.pars[0]**2 *(1.0+np.sqrt(3.0)*np.abs(r)/self.pars[1]) \
-            *np.exp(-np.sqrt(3.0)*np.abs(r)/self.pars[1])
+        return self.pars[0]**2 * (
+            1.0 + np.sqrt(3.0) * np.abs(r) / self.pars[1]) * np.exp(
+                -np.sqrt(3.0) * np.abs(r) / self.pars[1])
 
 
 #### Matern 5/2 ################################################################
@@ -377,22 +370,21 @@ class Matern52(covFunction):
     ----------
     theta: float
         Amplitude
-    l: float
+    ell: float
         Characteristic lenght scale
-
-    Returns
-    -------
     """
-    def __init__(self, theta, l):
-        super(Matern52, self).__init__(theta, l)
-        self.tag = 'M52'
-        self.theta = theta
-        self.ell = l
+    _param_names = 'theta', 'ell'
+    _tag = 'M52'
+
+    def __init__(self, theta, ell):
+        super(Matern52, self).__init__(theta, ell)
 
     def __call__(self, r):
-        return self.pars[0]**2 *\
-            (1.0+(3*np.sqrt(5)*self.pars[1]*np.abs(r)+5*np.abs(r)**2)/(3*self.pars[1]**2))\
-                *np.exp(-np.sqrt(5.0)*np.abs(r)/self.pars[1])
+        return self.pars[0]**2 * (
+            1.0 +
+            (3 * np.sqrt(5) * self.pars[1] * np.abs(r) + 5 * np.abs(r)**2) /
+            (3 * self.pars[1]**2)) * np.exp(
+                -np.sqrt(5.0) * np.abs(r) / self.pars[1])
 
 
 #### Linear ####################################################################
@@ -406,9 +398,6 @@ class Linear(covFunction):
         Amplitude (should we even have an amplitude???)
     c: float
         Constant
-        
-    Returns
-    -------
     """
     def __init__(self, theta, c):
         super(Linear, self).__init__(theta, c)
@@ -448,10 +437,10 @@ class GammaExp(covFunction):
         return self.pars[0]**2 *np.exp(-(np.abs(r)/self.pars[2])**self.pars[1])
 
 
-##### Polinomial ###############################################################
+##### Polynomial ###############################################################
 class Polynomial(covFunction):
     """
-    Definition of the polinomial kernel
+    Definition of the polynomial kernel
 
     Parameters
     ----------
