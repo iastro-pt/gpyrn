@@ -3,6 +3,7 @@ Mean functions to use on the GPRN
 """
 from functools import wraps
 import numpy as np
+from pykima.keplerian import keplerian
 
 __all__ = [
     'Constant', 'MultiConstant', 'Linear', 'Parabola', 'Cubic', 'Sine',
@@ -70,7 +71,17 @@ class Sum(MeanModel):
     """ Sum of two mean functions """
     def __init__(self, m1, m2):
         self.m1, self.m2 = m1, m2
-        self._param_names = tuple(list(m1._param_names) + list(m2._param_names))
+        if m1.__class__ == m2.__class__:
+            # if they are the same class, number the parameter names
+            param_names = []
+            for p in m1._param_names:
+                param_names.append(f'{p}1')
+            for p in m2._param_names:
+                param_names.append(f'{p}2')
+            self._param_names = tuple(param_names)
+        else:
+            self._param_names = tuple(
+                list(m1._param_names) + list(m2._param_names))
         self._parsize = m1._parsize + m2._parsize
         self.pars = np.r_[self.m1.pars, self.m2.pars]
 
@@ -269,51 +280,17 @@ class Sine(MeanModel):
 
 ##### f(x) = K*(e*np.cos(w+np.cos(w+nu(x))) + d ################################
 class Keplerian(MeanModel):
-    """
-    Keplerian function adapted from radvel
-    We have RV = K[cos(w+v) + e*cos(w)] + sys_vel
-    P  = period in days
-    e = eccentricity
-    K = RV amplitude in m/s
-    w = longitude of the periastron
-    phi = orbital phase
-    sys_vel = offset
-    """
-    _parsize = 6
-    def __init__(self, P, K, e, w, phi, sys_vel):
-        super(Keplerian, self).__init__(P, K, e, w, phi, sys_vel)
-        self.P, self.K, self.e, self.w, self.phi = P, K, e, w, phi
-        self.sys_vel = sys_vel
+    """ Keplerian function """
+    _param_names = ('P', 'K', 'e', 'w', 'Tp')
+    _parsize = 5
+
+    def __init__(self, P, K, e, w, Tp):
+        super(Keplerian, self).__init__(P, K, e, w, Tp)
 
     @array_input
     def __call__(self, t):
-        P, K, e, w, phi, sys_vel = self.pars
-        T0 = t[0] - (P*phi)/(2.*np.pi)
-        M0 = 2*np.pi*(t-T0)/P #first guess at M
-        E0 = M0 + e*np.sin(M0) + 0.5*(e**2)*np.sin(2*M0)  #first guess at E
-        M1 = ( E0 - e * np.sin(E0) - M0) #goes to zero when converges
-        criteria = 1e-10
-        convd = np.where(np.abs(M1) > criteria)[0]  # which indices have not converged
-        nd = len(convd)  # number of unconverged elements
-        count = 0
-        while nd > 0:
-            count += 1
-            E = E0
-            M1p = 1 - e * np.cos(E)
-            M1pp = e * np.sin(E)
-            M1ppp = 1 - M1p
-            d1 = -M1 / M1p
-            d2 = -M1 / (M1p + d1 * M1pp / 2.0)
-            d3 = -M1 / (M1p + d2 * M1pp / 2.0 + d2 * d2 * M1ppp / 6.0)
-            E = E + d3
-            E0 = E
-            M0 = E0 - e*np.sin(E0)
-            M1 = ( E0 - e * np.sin( E0 ) - M0)
-            convergence_criteria = np.abs(M1) > criteria
-            nd = np.sum(convergence_criteria is True)
-        nu = 2*np.arctan(np.sqrt((1+e)/(1-e))*np.tan(E0/2))
-        RV = K*(e*np.cos(w)+np.cos(w+nu)) + sys_vel
-        return RV
+        P, K, e, w, Tp = self.pars
+        return keplerian(t, P, K, e, w, Tp, 0.0)
 
 
 ##### f(x) = (x - a)**(-3) + b #################################################
