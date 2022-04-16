@@ -5,7 +5,7 @@ from gpyrn.meanfunc import array_input
 import numpy as np
 
 
-class covFunction():
+class covFunction:
     """
     A base class for covariance functions (kernels) used for nodes and weights
     in the GPRN.
@@ -21,6 +21,9 @@ class covFunction():
         Not sure if this is a good approach since will make our life harder
         when defining certain non-stationary kernels, e.g linear kernel.
         """
+        raise NotImplementedError
+
+    def _dkdxidj(self, r):
         raise NotImplementedError
 
     def __repr__(self):
@@ -88,6 +91,30 @@ class Multiplication(_operator):
         return "{0} * {1}".format(self.k1, self.k2)
 
 
+class _unary_operator(covFunction):
+    """ To allow operations for one kernel """
+    def __init__(self, k):
+        msg = f'kernel {k} is not twice differentiable'
+        if not hasattr(k, '_twice_differentiable') or not k._twice_differentiable:
+            raise ValueError(msg)
+
+        self.k = k
+        self.kerneltype = 'complex_unary'
+        self.pars = self.k.pars
+
+        self._param_names = self.k._param_names
+        self._tag = 'd' + self.k._tag
+
+
+class Derivative(_unary_operator):
+    def __call__(self, r):
+        return self.k._dkdxidj(r)
+
+    def __repr__(self):
+        self.k.pars = self.pars
+        return "d {0}".format(self.k)
+
+
 ##### Constant #################################################################
 class Constant(covFunction):
     """
@@ -147,12 +174,28 @@ class SquaredExponential(covFunction):
     """
     _param_names = 'theta', 'ell'
     _tag = 'SE'
+    _twice_differentiable = True
 
     def __init__(self, theta, ell):
         super(SquaredExponential, self).__init__(theta, ell)
 
     def __call__(self, r):
         return self.pars[0]**2 * np.exp(-0.5 * r**2 / self.pars[1]**2)
+
+    def _dkdxi(self, r):
+        θ, ell = self.pars
+        return θ**2 * (-r) * np.exp(-0.5 * (-r)**2 / ell**2) / ell**2
+
+    def _dkdxj(self, r):
+        # covariance between an observation at xi
+        # and a derivative observation at xj
+        θ, ell = self.pars
+        return θ**2 * r * np.exp(-0.5 * r**2 / ell**2) / ell**2
+
+    def _dkdxidj(self, r):
+        term1 = self.pars[0]**2 / self.pars[1]**4
+        term2 = self.pars[1]**2 - r**2
+        return term1 * term2 * np.exp(-0.5 * r**2 / self.pars[1]**2)
 
 
 ##### Periodic #################################################################
@@ -171,6 +214,7 @@ class Periodic(covFunction):
     """
     _param_names = 'theta', 'P', 'lp'
     _tag = 'P'
+    _twice_differentiable = True
 
     def __init__(self, theta, P, lp):
         super(Periodic, self).__init__(theta, P, lp)
@@ -178,6 +222,14 @@ class Periodic(covFunction):
     def __call__(self, r):
         θ, P, lp = self.pars
         return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 / lp**2)
+
+    def _dkdxidj(self, r):
+        θ, P, lp = self.pars
+        rP = np.pi * r / P
+        term1 = 4 * np.pi**2 * θ**2
+        term2 = lp**2 * np.cos(2 * rP) - 4 * np.sin(rP)**2 * np.cos(rP)**2
+        term3 = np.exp(-2 * np.sin(rP)**2 / lp**2)
+        return term1 * term2 * term3
 
 
 ##### Quasi Periodic ###########################################################
@@ -200,15 +252,28 @@ class QuasiPeriodic(covFunction):
     """
     _param_names = 'theta', 'le', 'P', 'lp'
     _tag = 'QP'
+    _twice_differentiable = True
 
     def __init__(self, theta, le, P, lp):
         super(QuasiPeriodic, self).__init__(theta, le, P, lp)
 
     def __call__(self, r):
         θ, le, P, lp = self.pars
-        return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 / lp**2 - \
-                             r**2 / (2 * le**2))
+        term1 = -2 * np.sin(np.pi * np.abs(r) / P)**2 / lp**2
+        term2 = r**2 / (2 * le**2)
+        return θ**2 * np.exp(term1 - term2)
 
+    def _dkdxidj(self, r):
+        θ, le, P, lp = self.pars
+        term1 = 2 * θ**2 / (P**2 * lp**4 * le**4)
+        term2 = P**2 * lp**4 * le**2 - \
+                2 * P**2 * lp**4 * r**2 - \
+                4 * np.pi * P * lp**2 * le**2 * r * np.sin(2 * np.pi * r / P) + \
+                2 * np.pi**2 * lp**2 * le**4 * np.cos(2 * np.pi * r / P) - \
+                8 * np.pi**2 * le**4 * np.sin(np.pi * r / P)**2 * np.cos(np.pi * r / P)**2
+        term3 = np.exp(-(lp**2 * r**2 + 2 * le**2 * np.sin(np.pi * r / P)**2) / (lp**2 * le**2))
+        return term1 * term2 * term3
+        
 
 ##### Rational Quadratic #######################################################
 class RationalQuadratic(covFunction):
