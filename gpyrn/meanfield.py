@@ -66,6 +66,9 @@ class inference(object):
         self._components_set = False
         self._frozen_mask = np.array([])
         self._mu, self._var = None, None
+        self._mu_var_iters = 0
+        self.update_muvar_after = 50
+        self.elbo_max_iter = 5000
 
     def set_components(self, nodes, weights, means, jitters):
         if isinstance(nodes, covfunc.covFunction):
