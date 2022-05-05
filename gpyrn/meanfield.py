@@ -455,9 +455,20 @@ class inference(object):
         normal = multivariate_normal(mean, K, allow_singular=True).rvs()
         return normal
 
+    def _get_components(self, nodes=None, weights=None, means=None,
+                        jitters=None):
 
-##### Mean-Field Inference functions ##########################################
+        # if nothing was given, componentes must be already set
+        all_none = all([i is None for i in (nodes, weights, means, jitters)])
+        msg = 'GPRN components not set, use set_components'
+        if all_none and not self._components_set:
+            raise ValueError(msg)
 
+        nodes = self.nodes if nodes is None else nodes
+        weights = self.weights if weights is None else weights
+        means = self.means if means is None else means
+        jitters = self.jitters if jitters is None else jitters
+        return nodes, weights, means, jitters
 
 
 ##### Mean-Field Inference functions ##########################################
