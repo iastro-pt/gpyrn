@@ -3,7 +3,7 @@ Mean functions to use on the GPRN
 """
 from functools import wraps
 import numpy as np
-from pykima.keplerian import keplerian
+# from pykima.keplerian import keplerian
 
 __all__ = [
     'Constant', 'MultiConstant', 'Linear', 'Parabola', 'Cubic', 'Sine',
