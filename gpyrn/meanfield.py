@@ -459,22 +459,25 @@ class inference(object):
 ##### Mean-Field Inference functions ##########################################
 
 
-    def ELBOcalc(self, nodes, weights, means, jitter, iterations=10000,
-                 mu=None, var=None):
+
+##### Mean-Field Inference functions ##########################################
+
+    def ELBOcalc(self, nodes=None, weights=None, means=None, jitters=None,
+                 max_iter=None, mu=None, var=None):
         """
         Function to use to calculate the evidence lower bound
 
         Parameters
         ----------
-        nodes: array
-            Node functions
-        weights: array
-            Weight functions
-        means: array
+        nodes: list of `covFunction` instances
+            Kernel(s) for the node(s)
+        weights: list of `covFunction` instances
+            Kernel(s) for the weight(s)
+        means: list of `meanFunction` instances
             Mean functions
-        jitter: array
+        jitters: list of floats
             Jitter terms
-        iterations: int
+        max_iter: int, default self.elbo_max_iter
             Maximum number of iterations allowed in ELBO calculation
         mu: array or str, optional
             Variational means or 'init', 'random', or 'previous'
@@ -490,6 +493,10 @@ class inference(object):
         var: array
             Optimized variational variance (diagonal of sigma)
         """
+        # deal with inputs or get attributes
+        nodes, weights, means, jitters = self._get_components(
+            nodes, weights, means, jitters)
+
         # initial variational parameters
         if mu is None and var is None:
             mu = var = 'init'
@@ -498,13 +505,13 @@ class inference(object):
             if self._mu is not None:
                 mu, var = self._mu, self._var
             else:
-                mu, var = self._initMuVar(nodes, weights, jitter)
+                mu, var = self._initMuVar(nodes, weights, jitters)
         elif mu == 'random' and var == 'random':
             mu, var = self._randomMuVar()
         elif mu == 'init' and var == 'init':
-            mu, var = self._initMuVar(nodes, weights, jitter)
+            mu, var = self._initMuVar(nodes, weights, jitters)
 
-        jitt2 = np.array(jitter)**2
+        jitt2 = np.array(jitters)**2
         Kf = np.array([self._KMatrix(i, self.time) for i in nodes])
         Kw = np.array([self._KMatrix(j, self.time) for j in weights])
         Lf = np.array([self._cholNugget(j)[0] for j in Kf])
@@ -513,13 +520,16 @@ class inference(object):
         y = np.array(np.array_split(y, self.p))
 
         # To add new elbo values inside
-        ELBO, _, _, _, _ = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2, mu, var)
+        ELBO, *_ = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2, mu, var)
         elboArray = np.array([ELBO])
         iterNumber = 0
-        while iterNumber < iterations:
+
+        if max_iter is None:
+            max_iter = self.elbo_max_iter
+
+        while iterNumber < max_iter:
             # Optimize mu and var analytically
-            ELBO, mu, var, sigF, sigW = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2,
-                                                     mu, var)
+            ELBO, mu, var, _, _ = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2, mu, var)
             elboArray = np.append(elboArray, ELBO)
             iterNumber += 1
             # Stoping criteria:
@@ -529,16 +539,15 @@ class inference(object):
                 if criteria < 1e-3 and criteria != 0:
                     self._mu = mu
                     self._var = var
-                    return ELBO, mu, var
+                    return ELBO, mu, var, iterNumber
 
         print('\nMax iterations reached')
-        return ELBO, mu, var
-
+        return ELBO, mu, var, iterNumber
 
     def ELBOaux(self, Kf, Kw, Lf, Lw, y, jitt2, mu, var):
         """
         Evidence Lower bound to use in ELBOcalc()
-        
+
         Parameters
         ----------
         Kf: array
@@ -557,7 +566,7 @@ class inference(object):
             Variational means
         var: array
             Variational variances
-            
+
         Returns
         -------
         ELBO: float
@@ -900,7 +909,10 @@ class inference(object):
             tstar = self.time
 
         if mu is None and var is None:
-            mu, var = self._mu, self._var
+            if self._mu is None and self._var is None:
+                mu, var = self._initMuVar(nodes, weights, jitters)
+            else:
+                mu, var = self._mu, self._var
 
         muF, muW = self._u_to_fhatW(mu.flatten())
         varF, varW = self._u_to_fhatW(var.flatten())
