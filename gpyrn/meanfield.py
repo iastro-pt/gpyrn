@@ -1,14 +1,17 @@
-import time as time_module
 from itertools import chain
+import time as time_module
+
+import scipy.linalg
+
+from gpyrn.meanfunc import array_input
+from gpyrn import _gp, covfunc
 
 import numpy as np
 from scipy.linalg import cholesky, LinAlgError, cho_solve
-from scipy.optimize import minimize
-from scipy.stats import multivariate_normal
 
+from scipy.stats import multivariate_normal
+from scipy.optimize import minimize
 from gpyrn import _gp
-from gpyrn import covfunc
-from gpyrn.meanfunc import array_input
 
 
 class inference(object):
@@ -67,6 +70,9 @@ class inference(object):
         self._components_set = False
         self._frozen_mask = np.array([])
         self._mu, self._var = None, None
+        self._mu_var_iters = 0
+        self.update_muvar_after = 50
+        self.elbo_max_iter = 5000
 
     def set_components(self, nodes, weights, means, jitters):
         if isinstance(nodes, covfunc.covFunction):
@@ -868,12 +874,8 @@ class inference(object):
 
         spaces = 20*' '
         print(f'ELBO={elbo:7.2f} (took {1e3*(end-start):5.2f} ms){spaces}',
-        end = time_module.time()
-
-        spaces = 20 * ' '
-        msg = f'ELBO = {elbo:7.2f} '
-        msg += f'(took {1e3*(end-start):8.4f} ms, {i} iterations){spaces}'
-        print(msg, end='\r', flush=True)
+              end='\r', flush=True)
+        return -elbo
 
 
     def optimize(self, vars=None, **kwargs):
