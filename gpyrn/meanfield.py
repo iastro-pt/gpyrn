@@ -77,6 +77,9 @@ class inference(object):
     def set_components(self, nodes, weights, means, jitters):
         if isinstance(nodes, covfunc.covFunction):
             nodes = [nodes]
+        if len(nodes) != self.q:
+            raise ValueError('Wrong number of nodes provided')
+
         self.nodes = nodes
 
         if isinstance(weights, covfunc.covFunction):
@@ -318,10 +321,10 @@ class inference(object):
             Matrix of a covariance function
         """
         r = time[:, None] - time[None, :]
-        K = kernel(r) + 1e-6 * np.diag(np.diag(np.ones_like(r)))
+        K = kernel(r) + 1e-10 * np.eye(time.size)
+        # K = kernel(r) + 1.25e-11 * np.diag(np.diag(np.ones_like(r)))
         # K[np.abs(K) < 1e-12] = 0.
         return K
-
 
     def _tinyNuggetKMatrix(self, kernel, time=None):
         """
