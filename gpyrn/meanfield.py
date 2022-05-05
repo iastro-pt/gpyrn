@@ -66,9 +66,6 @@ class inference(object):
         self._components_set = False
         self._frozen_mask = np.array([])
         self._mu, self._var = None, None
-        self._mu_var_iters = 0
-        self.update_muvar_after = 50
-        self.elbo_max_iter = 5000
 
     def set_components(self, nodes, weights, means, jitters):
         if isinstance(nodes, covfunc.covFunction):
@@ -836,8 +833,12 @@ class inference(object):
 
         spaces = 20*' '
         print(f'ELBO={elbo:7.2f} (took {1e3*(end-start):5.2f} ms){spaces}',
-              end='\r', flush=True)
-        return -elbo
+        end = time_module.time()
+
+        spaces = 20 * ' '
+        msg = f'ELBO = {elbo:7.2f} '
+        msg += f'(took {1e3*(end-start):8.4f} ms, {i} iterations){spaces}'
+        print(msg, end='\r', flush=True)
 
 
     def optimize(self, vars=None, **kwargs):
