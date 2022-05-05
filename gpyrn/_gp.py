@@ -2,7 +2,7 @@
 Auxiliary Gaussian processes functions
 """
 import numpy as np
-from gprn import covFunction as kernels
+from .covfunc import covFunction as kernels
 from scipy.linalg import cho_factor, cho_solve
 
 ##### Gaussian processes #######################################################
