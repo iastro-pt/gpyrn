@@ -1,6 +1,7 @@
 from itertools import chain
 import time as time_module
 from gpyrn.meanfunc import array_input
+from gpyrn import _gp, covfunc
 
 import numpy as np
 from scipy.linalg import cholesky, LinAlgError
