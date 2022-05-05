@@ -1,13 +1,14 @@
-from itertools import chain
 import time as time_module
-from gpyrn.meanfunc import array_input
-from gpyrn import _gp, covfunc
+from itertools import chain
 
 import numpy as np
-from scipy.linalg import cholesky, LinAlgError
-from scipy.stats import multivariate_normal
+from scipy.linalg import cholesky, LinAlgError, cho_solve
 from scipy.optimize import minimize
+from scipy.stats import multivariate_normal
+
 from gpyrn import _gp
+from gpyrn import covfunc
+from gpyrn.meanfunc import array_input
 
 
 class inference(object):
@@ -722,6 +723,7 @@ class inference(object):
         logl: float
             Expected log-likelihood value
         """
+
         logl = 0
         for p in range(self.p):
             for n in range(self.N):
@@ -742,6 +744,8 @@ class inference(object):
                                 np.diag(sigma_f[q,:,:])*np.diag(sigma_w[q,p,:,:]))\
                                 /(jitt2[p]+self.yerr2[p,:]))
         logl += -0.5* value
+
+
         return logl
 
 
@@ -770,6 +774,7 @@ class inference(object):
         logp: float
             Expected log prior value
         """
+
         #we have Q nodes -> j in the paper; we have P y(x)s -> i in the paper
         first_term = 0 #calculation of the first term of eq.15 of Nguyen & Bonilla (2013)
         second_term = 0 #calculation of the second term of eq.15 of Nguyen & Bonilla (2013)
@@ -777,22 +782,52 @@ class inference(object):
         Lw = Lw.reshape(self.q, self.p, self.N, self.N)
         muW = mu_w.reshape(self.q, self.p, self.N)
         sumSigmaF = np.zeros_like(sigma_f[0])
+
+        compare_results = False
+        def comp_results(a,b):
+            if not np.allclose(a, b):
+                print(a,b)
+                raise Exception
+
         for j in range(self.q):
             Lfj = Lf[j]
             logKf = np.float(np.sum(np.log(np.diag(Lfj))))
-            muK =  np.linalg.solve(Lfj, mu_f[:,j, :].reshape(self.N))
-            muKmu = muK @ muK
+
+            mu_reshaped = mu_f[0,j, :]
+            muKmu = mu_reshaped.T @ cho_solve((Lfj, True), mu_reshaped)
+            
+            if compare_results:
+                muK =  np.linalg.solve(Lfj, mu_f[:,j, :].reshape(self.N))
+                muKmu_og = muK @ muK
+                comp_results(muKmu, muKmu_og)
+
             sumSigmaF = sumSigmaF + sigma_f[j]
-            trace = np.trace(np.linalg.solve(Kf[j], sumSigmaF))
+
+            trace = np.trace(cho_solve((Lfj, True), sumSigmaF))
+
+            if compare_results:
+                trace_og = np.trace(np.linalg.solve(Kf[j], sumSigmaF))
+                comp_results(trace, trace_og)
+
             first_term += -logKf - 0.5*(muKmu + trace)
             for i in range(self.p):
-                muK = np.linalg.solve(Lw[j,i,:,:], muW[j,i])
-                muKmu = muK @ muK
-                trace = np.trace(np.linalg.solve(Kw[j,i,:,:], sigma_w[j,i,:,:]))
+                muKmu = muW[j,i].T @ cho_solve((Lw[j,i,:,:], True), muW[j,i])
+                trace = np.trace(cho_solve((Lw[j,i,:,:], True), sigma_w[j,i,:,:]))
+
+
+                if compare_results:
+                    muK = np.linalg.solve(Lw[j,i,:,:], muW[j,i])
+                    muKmu_og = muK @ muK
+                    trace_og = np.trace(np.linalg.solve(Kw[j,i,:,:], sigma_w[j,i,:,:]))
+                    comp_results(muKmu, muKmu_og)
+                    comp_results(trace, trace_og)
+
+
                 second_term += -np.float(np.sum(np.log(np.diag(Lw[j,i,:,:]))))\
                                 - 0.5*(muKmu + trace)
         const = -0.5*self.N*self.q*(self.p+1)*np.log(2*np.pi)
         logp = first_term + second_term + const
+
         return logp
 
 
@@ -830,7 +865,7 @@ class inference(object):
         self.set_parameters(parameters)
 
         start = time_module.time()
-        elbo, _, _ = self.ELBOcalc(self.nodes, self.weights, self.means,
+        elbo, _, _, _ = self.ELBOcalc(self.nodes, self.weights, self.means,
                                    self.jitters, mu='previous', var='previous')
         end = time_module.time()
 
