@@ -36,7 +36,7 @@ class inference(object):
 
         # check if the input was correct
         msg = 'Number of observed data arrays should be even: y1, y1error, ...'
-        assert len(args) % 2 == 0, msg
+        assert len(args) > 0 and len(args) % 2 == 0, msg
 
         # the data, it should be given as data1, data1error, data2, ...
         self.args = args
@@ -67,10 +67,22 @@ class inference(object):
         self._mu, self._var = None, None
 
     def set_components(self, nodes, weights, means, jitters):
+        if isinstance(nodes, covfunc.covFunction):
+            nodes = [nodes]
         self.nodes = nodes
+
+        if isinstance(weights, covfunc.covFunction):
+            weights = [weights]
         self.weights = weights
+
+        if isinstance(means, (int, float)):
+            means = [means]
         self.means = means
-        self.jitters = np.array(jitters, dtype=float)
+        
+        if isinstance(jitters, (int, float)):
+            jitters = [jitters]
+        self.jitters = np.array(jitters, dtype=np.float)
+
         self._components_set = True
 
     def get_parameters(self, nodes=None, weights=None, means=None,
@@ -197,7 +209,11 @@ class inference(object):
                 index = list(self.parameters_dict.keys()).index(name)
                 self._frozen_mask[index] = True
 
+    def freeze_all_parameters(self):
+        self._frozen_mask = np.ones(self._frozen_mask.size, dtype=bool)
+
     fix_parameter = freeze_parameter
+    fix_all_parameters = freeze_all_parameters
 
     def thaw_parameter(self, index=None, name=None):
         self.frozen_mask
@@ -218,7 +234,11 @@ class inference(object):
                 index = list(self.parameters_dict.keys()).index(name)
                 self._frozen_mask[index] = False
 
+    def thaw_all_parameters(self):
+        self._frozen_mask = np.zeros(self._frozen_mask.size, dtype=bool)
+
     free_parameter = thaw_parameter
+    free_all_parameters = thaw_all_parameters
 
     @property
     def frozen_mask(self):
