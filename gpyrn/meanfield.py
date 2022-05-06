@@ -1,15 +1,11 @@
 from itertools import chain
 import time as time_module
 
-import scipy.linalg
-
 from gpyrn.meanfunc import array_input
 from gpyrn import _gp, covfunc
 
 import numpy as np
-from scipy.linalg import cholesky, LinAlgError, cho_solve
-
-from scipy.stats import multivariate_normal
+from scipy.linalg import cho_solve
 from scipy.optimize import minimize
 from gpyrn import _gp
 
@@ -29,10 +25,8 @@ class inference(object):
         The observed data in the following order:
             y1, y1error, y2, y2error, ...
     """
-
     def __init__(self, num_nodes, time, *args):
         # number of node functions; f(x) in Wilson et al. (2012)
-        self.num_nodes = num_nodes
         self.q = num_nodes
         # array of the time
         self.time = time
@@ -89,7 +83,7 @@ class inference(object):
         if isinstance(means, (int, float)):
             means = [means]
         self.means = means
-        
+
         if isinstance(jitters, (int, float)):
             jitters = [jitters]
         self.jitters = np.array(jitters, dtype=np.float)
@@ -264,9 +258,7 @@ class inference(object):
         msg = 'Do not set frozen_mask, use thaw_parameter/freeze_parameter'
         raise NotImplementedError(msg)
 
-
 ##### mean functions definition ################################################
-
 
     def _mean(self, means, time=None):
         """
@@ -301,9 +293,7 @@ class inference(object):
                     m[i * N:(i + 1) * N] = meanfun(time)
         return m
 
-
 ##### To create matrices and samples ###########################################
-
 
     def _KMatrix(self, kernel, time=None):
         """
@@ -321,7 +311,7 @@ class inference(object):
             Matrix of a covariance function
         """
         r = time[:, None] - time[None, :]
-        K = kernel(r) + 1e-10 * np.eye(time.size)
+        K = kernel(r) + 1e-6 * np.eye(time.size)
         # K = kernel(r) + 1.25e-11 * np.diag(np.diag(np.ones_like(r)))
         # K[np.abs(K) < 1e-12] = 0.
         return K
@@ -339,7 +329,6 @@ class inference(object):
         r = time[:, None] - time[None, :]
         K = kernel(r) + 1.25e-12 * np.diag(np.diag(np.ones_like(r)))
         return K
-
 
     def _predictKMatrix(self, kernel, time):
         """
@@ -360,7 +349,6 @@ class inference(object):
         else:
             r = time[:, None] - self.time[None, :]
         return kernel(r)
-
 
     def _u_to_fhatW(self, u):
         """
@@ -427,21 +415,25 @@ class inference(object):
         mean1, mean2 = [], []
         var1, var2 = [], []
         for _, n in enumerate(a1):
-            m = [np.sqrt(np.abs(j)*n/i)*np.sign(j) for i,j in zip(a2,self.y)]
+            m = [
+                np.sqrt(np.abs(j) * n / i) * np.sign(j)
+                for i, j in zip(a2, self.y)
+            ]
             mean1.append(np.mean(m, axis=0))
-            mean2.append([np.sqrt(np.abs(j)*i/n) for i,j in zip(a2,self.y)])
-            var1.append([np.mean(jitter)*np.ones_like(self.time)])
-            var2.append([jitt*np.ones_like(self.time) for jitt in jitter])
+            mean2.append(
+                [np.sqrt(np.abs(j) * i / n) for i, j in zip(a2, self.y)])
+
+            var1.append([np.mean(jitter) * np.ones_like(self.time)])
+            var2.append([jitt * np.ones_like(self.time) for jitt in jitter])
+
         mu = np.concatenate((mean1, mean2), axis=None)
         var = np.concatenate((var1, var2), axis=None)
         return mu, var
-
 
     def _randomMuVar(self):
         mu = np.random.randn(self.d, 1)
         var = np.random.rand(self.d, 1)
         return mu, var
-
 
     def sampleIt(self, latentFunc, time=None):
         """
@@ -453,7 +445,7 @@ class inference(object):
             Covariance function
         time: array
             Time array
-        
+
         Returns
         -------
         norm: array
@@ -601,31 +593,31 @@ class inference(object):
         #to separate the variational parameters between the nodes and weights
         muF, muW = self._u_to_fhatW(mu.flatten())
         varF, varW = self._u_to_fhatW(var.flatten())
-        sigmaF, muF, sigmaW, muW = self._updateSigMu(Kf, Kw, y, jitt2,
+        sigmaF, muF, sigmaW, muW = self._updateSigMu(Kf, Kw, Lf, Lw, y, jitt2,
                                                      muF, varF, muW, varW)
-        #new mean and var for the nodes
+
+        # new mean and var for the nodes
         muF = muF.reshape(1, self.q, self.N)
-        varF =  np.zeros_like(varF)
+        varF = np.zeros_like(varF)
         for i in range(self.q):
-            varF[:,i,:] = np.diag(sigmaF[i,:,:])
+            varF[:, i, :] = np.diag(sigmaF[i, :, :])
         #new mean and varfor the weights
-        varW =  np.zeros_like(varW)
+        varW = np.zeros_like(varW)
         for j in range(self.q):
             for i in range(self.p):
-                varW[i,j,:] = np.diag(sigmaW[j, i,:, :])
+                varW[i, j, :] = np.diag(sigmaW[j, i, :, :])
         new_mu = np.concatenate((muF, muW))
         new_var = np.concatenate((varF, varW))
-        #Entropy
+        # Entropy
         Ent = self._entropy(sigmaF, sigmaW)
-        #Expected log prior
+        # Expected log prior
         LogP = self._expectedLogPrior(Kf, Kw, Lf, Lw, sigmaF, muF, sigmaW, muW)
-        #Expected log-likelihood
+        # Expected log-likelihood
         LogL = self._expectedLogLike(y, jitt2, sigmaF, muF, sigmaW, muW)
-        ELBO = (LogL + LogP + Ent) /self.q  #Evidence Lower Bound
+        ELBO = (LogL + LogP + Ent) / self.q  # Evidence Lower Bound
         return ELBO, new_mu, new_var, sigmaF, sigmaW
 
-
-    def _updateSigMu(self, Kf, Kw, y, jitt2, muF, varF, muW, varW):
+    def _updateSigMu(self, Kf, Kw, Lf, Lw, y, jitt2, muF, varF, muW, varW):
         """
         Efficient closed-form updates fot variational parameters. This
         corresponds to eqs. 16, 17, 18, and 19 of Nguyen & Bonilla (2013)
@@ -648,7 +640,7 @@ class inference(object):
             Initial variational mean of each weight
         varW: array
             Initial variational variance of each weight
-            
+
         Returns
         -------
         sigma_f: array
@@ -661,48 +653,163 @@ class inference(object):
             Updated variational mean of each weight
         """
 
+        compare_results = False
+        def comp_results(a,b):
+            if not np.allclose(a, b):
+                print('a', a)
+                print('b', b)
+                raise Exception
+
         Kw = Kw.reshape(self.q, self.p, self.N, self.N)
+        Lw = Lw.reshape(self.q, self.p, self.N, self.N)
         muF = np.squeeze(muF)
         #creation of Sigma_fj and mu_fj
-        sigma_f, mu_f = [], []
-        for j in range(self.q):
-            diagFj, auxCalc = 0, 0
-            for i in range(self.p):
-                diagFj = diagFj + (muW[i,j,:]*muW[i,j,:]+varW[i,j,:]) \
-                                                /(jitt2[i] + self.yerr2[i,:])
-                sumNj = np.zeros(self.N)
-                for k in range(self.q):
-                    if k != j:
-                        sumNj += muW[i,k,:]*muF[k,:].reshape(self.N)
-                auxCalc = auxCalc + ((y[i,:]-sumNj)*muW[i,j,:])/(jitt2[i]+self.yerr2[i,:])
-            CovF = np.diag(1 / diagFj) + Kf[j]
-            sigF = Kf[j] - Kf[j] @ np.linalg.solve(CovF, Kf[j])
-            sigma_f.append(sigF)
-            mu_f.append(sigF @ auxCalc)
-            muF = np.array(mu_f)
-        sigma_f = np.array(sigma_f)
-        mu_f = np.array(mu_f)
-        #creation of Sigma_wij and mu_wij
-        sigma_w, mu_w = [], np.zeros_like(muW)
-        for j in range(self.q):
-            for i in range(self.p):
-                mu_fj = mu_f[j]
-                var_fj = np.diag(sigma_f[j])
-                Diag_ij = (mu_fj*mu_fj+var_fj)/(jitt2[i]+self.yerr2[i,:])
-                Kw_ij = Kw[j,i,:,:]
-                CovWij = np.diag(1 / Diag_ij) + Kw_ij
-                sigWij = Kw_ij - Kw_ij @ np.linalg.solve(CovWij, Kw_ij)
-                sigma_w.append(sigWij)
-                sumNj = np.zeros(self.N)
-                for k in range(self.q):
-                    if k != j:
-                        sumNj += mu_f[k].reshape(self.N)*np.array(muW[i,k,:])
-                auxCalc = ((y[i,:]-sumNj)*mu_f[j,:])/(jitt2[i]+self.yerr2[i,:])
-                muW[i,j,:] = sigWij @ auxCalc
-        sigma_w = np.array(sigma_w).reshape(self.q, self.p, self.N, self.N)
-        mu_w = np.array(muW)
-        return sigma_f, mu_f, sigma_w, mu_w
 
+        sigma_f = np.empty((self.q, self.N, self.N))
+        mu_f = np.empty((self.q, self.N))
+
+        # shape: p x N
+        variance = jitt2[:, None] + self.yerr2
+
+        # muW  shape: p x q x N
+        # varW shape: p x q x N
+        # sum is over p, need to replicate variance over q axis
+        #? precomputed for all nodes j (eq 20)
+        diagonal_vector = np.sum((muW * muW + varW) / variance[:, None, :],
+                                 axis=0)
+
+
+        RR = []
+
+        for j in range(self.q):
+            # Kf_invf = np.linalg.inv(Kf[j])
+            Kf_inv = cho_solve((Lf[j], True), np.eye(self.N))
+            # print(Kf_invf[:5, :5])
+            # print()
+            # print(Kf_inv[:5, :5])
+            # input()
+            # assert np.allclose(Kf_invf, Kf_inv)
+            #? einsum gives a writeable view
+            Kf_inv_diagonal = np.einsum('jj->j', Kf_inv)
+            Kf_inv_diagonal += diagonal_vector[j]
+            sigma_f[j] = np.linalg.inv(Kf_inv)
+
+            # muW  shape: p x q x N
+            # muF shape: q x N
+            # sum is over q, except j
+            # y shape: p x N
+            # print(muW * muF)
+            # print('a')
+            # print(np.delete(muW * muF, j, axis=1))
+            # print('b')
+            residuals = y - np.sum(np.delete(muW * muF, j, axis=1), axis=1)
+            RR.append(residuals)
+            # residuals shape: p x N --> p x q x N
+            pred = np.sum(residuals * muW[:, j, :] / variance,
+                          axis=0)
+            mu_f[j] = sigma_f[j] @ pred
+
+        if compare_results:
+            sigma_f_og, mu_f_og = [], []
+            for j in range(self.q):
+                diagFj, auxCalc = 0, 0
+                for i in range(self.p):
+                    diagFj = diagFj + (muW[i,j,:]*muW[i,j,:]+varW[i,j,:]) / (jitt2[i] + self.yerr2[i,:])
+                    sumNj = np.zeros(self.N)
+                    for k in range(self.q):
+                        if k != j:
+                            sumNj += muW[i, k, :] * muF[k, :].reshape(self.N)
+                    auxCalc = auxCalc + ((y[i, :] - sumNj)*muW[i,j,:]) / (jitt2[i] + self.yerr2[i, :])
+                    # R = y[i, :] - sumNj
+                    # print(R)
+                    # print(RR[j][i])
+                    # input()
+
+                comp_results(diagFj, diagonal_vector[j])
+                CovF = np.diag(1 / diagFj) + Kf[j]
+                sigF = Kf[j] - Kf[j] @ np.linalg.solve(CovF, Kf[j])
+
+                # print(auxCalc)
+                # input()
+
+                sigma_f_og.append(sigF)
+                mu_f_og.append(sigF @ auxCalc)
+                # muF = np.array(mu_f_og)
+            sigma_f_og = np.array(sigma_f_og)
+            mu_f_og = np.array(mu_f_og)
+            comp_results(sigma_f, sigma_f_og)
+            comp_results(mu_f, mu_f_og)
+
+        # #creation of Sigma_wij and mu_wij
+        sigma_w = np.empty((self.q, self.p, self.N, self.N))
+        mu_w = np.empty((self.p, self.q, self.N))
+        #! why mu_w is not q x p x N ???
+
+        # Kw shape: q x p x N x N
+        # sigma_f shape: q x N x N
+        # mu_f shape: q x N
+        # print(sigma_f.shape)
+        # print(mu_f.shape)
+
+        # print(np.einsum('ijj->ij', sigma_f).shape)
+        #? this one is also a view but the + creates a copy
+        diagonal_vector = mu_f * mu_f + np.einsum('ijj->ij', sigma_f)
+        # print(diagonal_vector.shape)
+        # print(variance.shape)
+        # input()
+        # diagonal_vector = diagonal_vector / variance
+
+        # mu_w = np.empty((self.q, self.N))
+
+        R = []
+        for j in range(self.q):
+            residuals = y - np.sum(np.delete(mu_f * muW, j, axis=1), axis=1)
+            R.append(residuals)
+
+            for i in range(self.p):
+                # Kw_invf = np.linalg.inv(Kw[j, i])
+                Kw_inv = cho_solve((Lw[j, i], True), np.eye(self.N))
+                # print(Kw_invf, Kw_inv)
+                # assert np.allclose(Kw_invf, Kw_inv, rtol=0.01)
+
+                Kw_inv_diagonal = np.einsum('jj->j', Kw_inv)
+                Kw_inv_diagonal += diagonal_vector[j] / variance[i]
+                sigma_w[j, i] = np.linalg.inv(Kw_inv)
+
+                #
+                # sum is over q, except j
+                # y shape: p x N
+                # residuals shape: p x N --> p x q x N
+                pred = residuals[i] * mu_f[j, :] / variance[i]
+                mu_w[i, j] = sigma_w[j, i] @ pred
+
+
+        if compare_results:
+            sigma_w_og, mu_w_og = [], np.zeros_like(muW)
+            for j in range(self.q):
+                for i in range(self.p):
+                    mu_fj = mu_f_og[j]
+                    var_fj = np.diag(sigma_f_og[j])
+                    Diag_ij = (mu_fj * mu_fj + var_fj) / (jitt2[i] + self.yerr2[i, :])
+                    Kw_ij = Kw[j, i, :, :]
+                    CovWij = np.diag(1 / Diag_ij) + Kw_ij
+                    sigWij = Kw_ij - Kw_ij @ np.linalg.solve(CovWij, Kw_ij)
+                    sigma_w_og.append(sigWij)
+                    sumNj = np.zeros(self.N)
+                    for k in range(self.q):
+                        if k != j:
+                            sumNj += mu_f_og[k].reshape(self.N) * np.array(muW[i, k, :])
+                    auxCalc = ((y[i, :] - sumNj) * mu_f_og[j, :]) / (jitt2[i] + self.yerr2[i, :])
+                    mu_w_og[i, j, :] = sigWij @ auxCalc
+
+            sigma_w_og = np.array(sigma_w_og).reshape(self.q, self.p, self.N, self.N)
+            # mu_w_og = np.array(muW)
+
+            comp_results(sigma_w, sigma_w_og)
+            comp_results(mu_w, mu_w_og)
+
+        # input('all good!')
+        return sigma_f, mu_f, sigma_w, mu_w
 
     def _expectedLogLike(self, y, jitt2, sigma_f, mu_f, sigma_w, mu_w):
         """
@@ -733,14 +840,14 @@ class inference(object):
         logl = 0
         for p in range(self.p):
             for n in range(self.N):
-                logl += np.log(2*np.pi*(jitt2[p] + self.yerr2[p,n]))
+                logl += np.log(2 * np.pi * (jitt2[p] + self.yerr2[p, n]))
         logl *= -0.5
         sumN = []
         for n in range(self.N):
             for p in range(self.p):
-                Ydiff = y[p,n] - mu_f[0,:,n] @mu_w[p,:,n].T
-                bottom = jitt2[p]+self.yerr2[p,n]
-                sumN.append((Ydiff.T * Ydiff)/bottom)
+                Ydiff = y[p, n] - mu_f[0, :, n] @ mu_w[p, :, n].T
+                bottom = jitt2[p] + self.yerr2[p, n]
+                sumN.append((Ydiff.T * Ydiff) / bottom)
         logl += -0.5 * np.sum(sumN)
         value = 0
         for p in range(self.p):
@@ -749,11 +856,8 @@ class inference(object):
                                 np.diag(sigma_w[q,p,:,:])*mu_f[:,q,:]*mu_f[:,q,:] +\
                                 np.diag(sigma_f[q,:,:])*np.diag(sigma_w[q,p,:,:]))\
                                 /(jitt2[p]+self.yerr2[p,:]))
-        logl += -0.5* value
-
-
+        logl += -0.5 * value
         return logl
-
 
     def _expectedLogPrior(self, Kf, Kw, Lf, Lw, sigma_f, mu_f, sigma_w, mu_w):
         """
@@ -782,11 +886,12 @@ class inference(object):
         """
 
         #we have Q nodes -> j in the paper; we have P y(x)s -> i in the paper
-        first_term = 0 #calculation of the first term of eq.15 of Nguyen & Bonilla (2013)
-        second_term = 0 #calculation of the second term of eq.15 of Nguyen & Bonilla (2013)
         Kw = Kw.reshape(self.q, self.p, self.N, self.N)
         Lw = Lw.reshape(self.q, self.p, self.N, self.N)
         muW = mu_w.reshape(self.q, self.p, self.N)
+
+        first_term = 0.0  #calculation of the first term of eq.15 of Nguyen & Bonilla (2013)
+        second_term = 0.0  #calculation of the second term of eq.15 of Nguyen & Bonilla (2013)
         sumSigmaF = np.zeros_like(sigma_f[0])
 
         compare_results = False
@@ -799,11 +904,11 @@ class inference(object):
             Lfj = Lf[j]
             logKf = np.float(np.sum(np.log(np.diag(Lfj))))
 
-            mu_reshaped = mu_f[0,j, :]
+            mu_reshaped = mu_f[0, j, :]
             muKmu = mu_reshaped.T @ cho_solve((Lfj, True), mu_reshaped)
-            
+
             if compare_results:
-                muK =  np.linalg.solve(Lfj, mu_f[:,j, :].reshape(self.N))
+                muK = np.linalg.solve(Lfj, mu_f[:, j, :].reshape(self.N))
                 muKmu_og = muK @ muK
                 comp_results(muKmu, muKmu_og)
 
@@ -815,9 +920,10 @@ class inference(object):
                 trace_og = np.trace(np.linalg.solve(Kf[j], sumSigmaF))
                 comp_results(trace, trace_og)
 
-            first_term += -logKf - 0.5*(muKmu + trace)
+            first_term += -logKf - 0.5 * (muKmu + trace)
+
             for i in range(self.p):
-                muKmu = muW[j,i].T @ cho_solve((Lw[j,i,:,:], True), muW[j,i])
+                muKmu = muW[j, i].T @ cho_solve((Lw[j, i, :, :], True), muW[j, i])
                 trace = np.trace(cho_solve((Lw[j,i,:,:], True), sigma_w[j,i,:,:]))
 
 
@@ -836,7 +942,6 @@ class inference(object):
 
         return logp
 
-
     def _entropy(self, sigma_f, sigma_w):
         """
         Calculates the entropy in mean-field inference, corresponds to eq.14 
@@ -854,30 +959,31 @@ class inference(object):
         entropy: float
             Final entropy value
         """
-        entropy = 0 #starts at zero then we sum everything
+        entropy = 0  # starts at zero then we sum everything
         for j in range(self.q):
-            L1 = self._cholNugget(sigma_f[j])
-            entropy += np.sum(np.log(np.diag(L1[0])))
+            L1 = _cholNugget(sigma_f[j])[0]
+            entropy += np.sum(np.log(np.diag(L1)))
             for i in range(self.p):
-                L2 = self._cholNugget(sigma_w[j, i, :, :])
-                entropy += np.sum(np.log(np.diag(L2[0])))
-        const = 0.5*self.q*(self.p+1)*self.N*(1+np.log(2*np.pi))
+                L2 = _cholNugget(sigma_w[j, i, :, :])[0]
+                entropy += np.sum(np.log(np.diag(L2)))
+        const = 0.5 * self.q * (self.p + 1) * self.N * (1 + np.log(2 * np.pi))
         return entropy + const
 
-
-    def nELBO(self, parameters):
+    def nELBO(self, parameters, max_iter=None):
         msg = 'GPRN components not set, use set_components'
         assert self._components_set, msg
         self.set_parameters(parameters)
 
         start = time_module.time()
         elbo, _, _, _ = self.ELBOcalc(self.nodes, self.weights, self.means,
-                                   self.jitters, mu='previous', var='previous')
+                                      self.jitters, max_iter=max_iter,
+                                      mu='previous', var='previous')
         end = time_module.time()
 
         spaces = 20*' '
         print(f'ELBO={elbo:7.2f} (took {1e3*(end-start):5.2f} ms){spaces}',
               end='\r', flush=True)
+        print()
         return -elbo
 
 
