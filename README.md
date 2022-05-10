@@ -4,8 +4,6 @@
 
 [![PyPI version fury.io](https://badge.fury.io/py/gpyrn.svg)](https://pypi.org/project/gpyrn/)
 
-[![Build Status](https://app.travis-ci.com/jdavidrcamacho/gpyrn.svg?branch=main)](https://app.travis-ci.com/jdavidrcamacho/gpyrn)
-
 [![Build Status](https://img.shields.io/github/workflow/status/iastro-pt/gpyrn/Install)](https://github.com/iastro-pt/gpyrn/actions/workflows/install.yml)
 
 <br/>
