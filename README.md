@@ -18,9 +18,11 @@
 
 <br/>
 
-Modelling stellar activity signals in radial velocity data with Gaussian processes regression networks
+Modelling stellar activity signals in radial velocity data with Gaussian
+processes regression networks
 
-Check our [wiki page](https://github.com/jdavidrcamacho/gpyrn/wiki) to learn how to install it and use it!
+Check our [wiki page](https://github.com/iastro-pt/gpyrn/wiki) to learn how to
+install it and use it!
 
 <br/>
 
