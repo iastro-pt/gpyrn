@@ -1,5 +1,12 @@
+from functools import partial
 from itertools import chain
 import time as time_module
+
+import jax
+import jax.numpy as jnp
+from jax.scipy.linalg import cho_solve as cho_solve_jax
+jax.config.update("jax_enable_x64", True)
+
 
 from gpyrn.meanfunc import array_input
 from gpyrn import _gp, covfunc
@@ -525,6 +532,9 @@ class inference(object):
         elif mu == 'init' and var == 'init':
             mu, var = self._initMuVar(nodes, weights, jitters)
 
+        if max_iter is None:
+            max_iter = 10000
+
         jitt2 = np.array(jitters)**2
         Kf = np.array([self._KMatrix(i, self.time) for i in nodes])
         Kw = np.array([self._KMatrix(j, self.time) for j in weights])
@@ -617,6 +627,7 @@ class inference(object):
         ELBO = (LogL + LogP + Ent) / self.q  # Evidence Lower Bound
         return ELBO, new_mu, new_var, sigmaF, sigmaW
 
+    # @partial(jax.jit, static_argnums=(0,))
     def _updateSigMu(self, Kf, Kw, Lf, Lw, y, jitt2, muF, varF, muW, varW):
         """
         Efficient closed-form updates fot variational parameters. This
@@ -654,11 +665,6 @@ class inference(object):
         """
 
         compare_results = False
-        def comp_results(a,b):
-            if not np.allclose(a, b):
-                print('a', a)
-                print('b', b)
-                raise Exception
 
         Kw = Kw.reshape(self.q, self.p, self.N, self.N)
         Lw = Lw.reshape(self.q, self.p, self.N, self.N)
@@ -836,29 +842,82 @@ class inference(object):
         logl: float
             Expected log-likelihood value
         """
+        compare_results = True
 
-        logl = 0
-        for p in range(self.p):
-            for n in range(self.N):
-                logl += np.log(2 * np.pi * (jitt2[p] + self.yerr2[p, n]))
-        logl *= -0.5
-        sumN = []
-        for n in range(self.N):
+
+        # shape: p x N
+        variance = jitt2[:, None] + self.yerr2
+        logl = -0.5 * np.sum(np.log(2 * np.pi * variance))
+
+        if compare_results:
+            logl_og = 0
             for p in range(self.p):
-                Ydiff = y[p, n] - mu_f[0, :, n] @ mu_w[p, :, n].T
-                bottom = jitt2[p] + self.yerr2[p, n]
-                sumN.append((Ydiff.T * Ydiff) / bottom)
-        logl += -0.5 * np.sum(sumN)
-        value = 0
-        for p in range(self.p):
-            for q in range(self.q):
-                value += np.sum((np.diag(sigma_f[q,:,:])*mu_w[p,q,:]*mu_w[p,q,:] +\
-                                np.diag(sigma_w[q,p,:,:])*mu_f[:,q,:]*mu_f[:,q,:] +\
-                                np.diag(sigma_f[q,:,:])*np.diag(sigma_w[q,p,:,:]))\
-                                /(jitt2[p]+self.yerr2[p,:]))
+                for n in range(self.N):
+                    logl_og += np.log(2 * np.pi * (jitt2[p] + self.yerr2[p, n]))
+            logl_og *= -0.5
+            comp_results(logl, logl_og)
+
+        # mu_f shape: 1 x q x N
+        # mu_w shape: p x q x N
+
+        # shape: p x N
+        Ωnu = np.einsum('ijk,ij->ik', mu_w.T, mu_f[0].T).T
+        resid = self.y - Ωnu
+        term2 = -0.5 * np.sum(resid**2 / variance)
+        logl += term2
+
+        if compare_results:
+            sumN = []
+            for n in range(self.N):
+                for p in range(self.p):
+                    Ydiff = y[p, n] - mu_f[0, :, n] @ mu_w[p, :, n].T
+                    bottom = jitt2[p] + self.yerr2[p, n]
+                    sumN.append((Ydiff.T * Ydiff) / bottom)
+            term2_og = -0.5 * np.sum(sumN)
+            comp_results(term2, term2_og)
+            logl_og += term2_og
+
+
+        # mu_f shape: 1 x q x N
+        # mu_w shape: p x q x N
+        #
+        # sigma_f shape: q x N x N
+        # sigma_w shape: q x p x N x N
+
+        sigma_f_diagonals = np.einsum('ijj->ij', sigma_f)
+        sigma_w_diagonals = np.einsum('ijkk->ijk', sigma_w)
+
+        value = 0.0
+        for i in range(self.p):
+            for j in range(self.q):
+                _1 = sigma_f_diagonals[j].T @ mu_w[i, j]**2
+                _2 = sigma_w_diagonals[j, i].T @ mu_f[0, j]**2
+                _3 = sigma_f_diagonals[j].T @ sigma_w_diagonals[j, i]
+                value += (_1 + _2 + _3) #/ variance[i]
         logl += -0.5 * value
+
+
+        if compare_results:
+            value_og = 0
+            for p in range(self.p):
+                for q in range(self.q):
+                    value_og += np.sum(
+                        (np.diag(sigma_f[q, :, :]) * mu_w[p, q, :] *
+                         mu_w[p, q, :] + np.diag(sigma_w[q, p, :, :]) *
+                         mu_f[:, q, :] * mu_f[:, q, :] +
+                         np.diag(sigma_f[q, :, :]) *
+                         np.diag(sigma_w[q, p, :, :])) #/ (jitt2[p] + self.yerr2[p, :])
+                         )
+            comp_results(value, value_og)
+            logl_og += -0.5 * value_og
+
+
+
+        input('all good')
         return logl
 
+
+    @partial(jax.jit, static_argnums=(0,))
     def _expectedLogPrior(self, Kf, Kw, Lf, Lw, sigma_f, mu_f, sigma_w, mu_w):
         """
         Calculates the expection of the log prior wrt q(f,w) in mean-field
@@ -884,6 +943,7 @@ class inference(object):
         logp: float
             Expected log prior value
         """
+        compare_results = False
 
         #we have Q nodes -> j in the paper; we have P y(x)s -> i in the paper
         Kw = Kw.reshape(self.q, self.p, self.N, self.N)
@@ -892,20 +952,16 @@ class inference(object):
 
         first_term = 0.0  #calculation of the first term of eq.15 of Nguyen & Bonilla (2013)
         second_term = 0.0  #calculation of the second term of eq.15 of Nguyen & Bonilla (2013)
-        sumSigmaF = np.zeros_like(sigma_f[0])
+        sumSigmaF = jnp.zeros_like(sigma_f[0])
 
-        compare_results = False
-        def comp_results(a,b):
-            if not np.allclose(a, b):
-                print(a,b)
-                raise Exception
+
 
         for j in range(self.q):
             Lfj = Lf[j]
-            logKf = np.float(np.sum(np.log(np.diag(Lfj))))
+            logKf = jnp.sum(jnp.log(jnp.diag(Lfj)))
 
             mu_reshaped = mu_f[0, j, :]
-            muKmu = mu_reshaped.T @ cho_solve((Lfj, True), mu_reshaped)
+            muKmu = mu_reshaped.T @ cho_solve_jax((Lfj, True), mu_reshaped)
 
             if compare_results:
                 muK = np.linalg.solve(Lfj, mu_f[:, j, :].reshape(self.N))
@@ -914,7 +970,7 @@ class inference(object):
 
             sumSigmaF = sumSigmaF + sigma_f[j]
 
-            trace = np.trace(cho_solve((Lfj, True), sumSigmaF))
+            trace = jnp.trace(cho_solve_jax((Lfj, True), sumSigmaF))
 
             if compare_results:
                 trace_og = np.trace(np.linalg.solve(Kf[j], sumSigmaF))
@@ -923,8 +979,8 @@ class inference(object):
             first_term += -logKf - 0.5 * (muKmu + trace)
 
             for i in range(self.p):
-                muKmu = muW[j, i].T @ cho_solve((Lw[j, i, :, :], True), muW[j, i])
-                trace = np.trace(cho_solve((Lw[j,i,:,:], True), sigma_w[j,i,:,:]))
+                muKmu = muW[j, i].T @ cho_solve_jax((Lw[j, i, :, :], True), muW[j, i])
+                trace = jnp.trace(cho_solve_jax((Lw[j,i,:,:], True), sigma_w[j,i,:,:]))
 
 
                 if compare_results:
@@ -935,13 +991,14 @@ class inference(object):
                     comp_results(trace, trace_og)
 
 
-                second_term += -np.float(np.sum(np.log(np.diag(Lw[j,i,:,:]))))\
-                                - 0.5*(muKmu + trace)
-        const = -0.5*self.N*self.q*(self.p+1)*np.log(2*np.pi)
+                second_term += -jnp.sum(jnp.log(jnp.diag(Lw[j,i,:,:]))) - 0.5*(muKmu + trace)
+
+        const = -0.5 * self.N * self.q * (self.p + 1) * jnp.log(2 * jnp.pi)
         logp = first_term + second_term + const
 
         return logp
 
+    @partial(jax.jit, static_argnums=(0,))
     def _entropy(self, sigma_f, sigma_w):
         """
         Calculates the entropy in mean-field inference, corresponds to eq.14 
@@ -962,11 +1019,11 @@ class inference(object):
         entropy = 0  # starts at zero then we sum everything
         for j in range(self.q):
             L1 = _cholNugget(sigma_f[j])[0]
-            entropy += np.sum(np.log(np.diag(L1)))
+            entropy += jnp.sum(jnp.log(jnp.diag(L1)))
             for i in range(self.p):
                 L2 = _cholNugget(sigma_w[j, i, :, :])[0]
-                entropy += np.sum(np.log(np.diag(L2)))
-        const = 0.5 * self.q * (self.p + 1) * self.N * (1 + np.log(2 * np.pi))
+                entropy += jnp.sum(jnp.log(jnp.diag(L2)))
+        const = 0.5 * self.q * (self.p + 1) * self.N * (1 + jnp.log(2 * jnp.pi))
         return entropy + const
 
     def nELBO(self, parameters, max_iter=None):
