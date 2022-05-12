@@ -2,31 +2,23 @@ name: Docs
 
 # Only trigger, when the build workflow succeeded
 on:
-  push:
-    branches: [ main, docs ]
   workflow_run:
     workflows: ["Install"]
     types:
       - completed
 
 jobs:
-  docs:
-
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+
       - name: Run examples
         run: |
           make -C docs
 
-      - name: Install doc dependencies
-        run: |
-          pip install mkdocs mkdocstrings mkdocs-material
-
-      - name: Build docs
-        run: |
-          mkdocs build
-
-      # - name: Publish docs
-      #   run: |
-      #     mkdocs gh-deploy --force
+      - run: pip install mkdocs-material 
+      - run: mkdocs gh-deploy --force
