@@ -30,9 +30,9 @@ nav:
     - One dataset: 'examples/one_dataset.md'
     - Several datasets: 'examples/several_datasets.md'
   - 'benchmarks.md'
-  - 'Issue Tracker': 'https://example.com/'
+  - 'Issue Tracker': 'https://github.com/iastro-pt/gpyrn/issues'
 
-opyright: Copyright &copy; 2016 - 2020 Martin Donath
+copyright: Copyright &copy; 2021 - 2022 Institute of Astrophysics and Space Sciences
 # extra:
 #   generator: false
 
