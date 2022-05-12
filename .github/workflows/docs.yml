@@ -2,6 +2,8 @@ name: Docs
 
 # Only trigger, when the build workflow succeeded
 on:
+  push:
+    branches: [ main, docs ]
   workflow_run:
     workflows: ["Install"]
     types:
