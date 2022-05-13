@@ -1,0 +1,66 @@
+site_name: gpyrn
+repo_url: https://github.com/iastro-pt/gpyrn/
+edit_uri: ""
+
+theme:
+  name: "material"
+  features:
+    - navigation.instant
+    - navigation.tracking
+    # - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+  palette: 
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate 
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+
+nav:
+  - Welcome: 'index.md'
+  - Installation: 'installation.md'
+  - Getting started: 'getting_started.md'
+  - Examples:
+    - examples/index.md
+    - One dataset: 'examples/one_dataset.md'
+    - Several datasets: 'examples/several_datasets.md'
+  - 'benchmarks.md'
+  - 'Issue Tracker': 'https://github.com/iastro-pt/gpyrn/issues'
+
+copyright: Copyright &copy; 2021 - 2022 Institute of Astrophysics and Space Sciences
+# extra:
+#   generator: false
+
+plugins:
+- search
+- mkdocstrings
+- mkdocstrings:
+    default_handler: python
+    handlers:
+      python:
+        rendering:
+          show_source: false
+    custom_templates: templates
+
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - footnotes
+  - md_in_html
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.keys
+  - pymdownx.critic:
+      mode: view
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences 

@@ -35,6 +35,9 @@ class inference(object):
     def __init__(self, num_nodes, time, *args):
         # number of node functions; f(x) in Wilson et al. (2012)
         self.q = num_nodes
+        if num_nodes >= 2:
+            raise NotImplementedError('There is a bug for more than one node, currently being fixed')
+
         # array of the time
         self.time = time
         # number of observations, N in Wilson et al. (2012)

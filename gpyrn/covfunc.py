@@ -292,7 +292,7 @@ class RationalQuadratic(covFunction):
     _param_names = 'theta', 'alpha', 'ell'
     _tag = 'RQ'
 
-    def __init__(self, amplitude, alpha, ell):
+    def __init__(self, theta, alpha, ell):
         super(RationalQuadratic, self).__init__(theta, alpha, ell)
 
     def __call__(self, r):
