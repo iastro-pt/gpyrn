@@ -11,7 +11,8 @@ processes.
 
 !!! cite ""
     
-    The GPRN was originally proposed by Wilson et al. (2012)
+    The GPRN was originally proposed by 
+    [Wilson et al. (2012)](https://icml.cc/2012/papers/329.pdf).
 
 
 ### Authors
