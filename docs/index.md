@@ -1,7 +1,7 @@
 # gpyrn
 
 
-**Modelling stellar activity with Gaussian processes regression networks**
+**Modelling stellar activity with Gaussian process regression networks**
 
 `gpyrn` is a Python package implementing a GPRN framework for the analysis of RV
 datasets.  
