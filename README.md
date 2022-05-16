@@ -46,7 +46,7 @@ If you use this package in your work, please cite the following publication
 (currently under review)
 
 ```bibtex
-@ARTICLE{2022arXiv220506627C,
+@ARTICLE{gpyrn2022,
     author = {{Camacho}, J.~D. and {Faria}, J.~P. and {Viana}, P.~T.~P.},
         title = "{Modelling stellar activity with Gaussian process regression networks}",
     journal = {arXiv e-prints},
