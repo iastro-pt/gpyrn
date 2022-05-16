@@ -1,9 +1,7 @@
-"""
-Mean functions to use on the GPRN
-"""
-from functools import wraps
 import numpy as np
+from ._utils import Array, _array_input
 # from pykima.keplerian import keplerian
+
 
 __all__ = [
     'Constant', 'MultiConstant', 'Linear', 'Parabola', 'Cubic', 'Sine',
@@ -11,37 +9,21 @@ __all__ = [
 ]
 
 
-def array_input(f):
-    """ Decorator to provide the __call__ methods with an array """
-    @wraps(f)
-    def wrapped(self, t):
-        t = np.atleast_1d(t)
-        r = f(self, t)
-        return r
-    return wrapped
-
-
-class MeanModel():
-    """ Class for our mean functions"""
+class meanFunction():
+    """ Base class for mean functions"""
     _parsize = 0
 
     def __init__(self, *pars):
         self.pars = np.array(pars, dtype=float)
 
     def __repr__(self):
-        """ Representation of each instance """
         return "{0}({1})".format(self.__class__.__name__,
                                  ", ".join(map(str, self.pars)))
-
-    @classmethod
-    def initialize(cls):
-        """ Initialize instance, setting all parameters to 0. """
-        return cls(*([0.] * cls._parsize))
 
     def get_parameters(self):
         return self.pars
 
-    @array_input
+    @_array_input
     def set_parameters(self, p):
         msg = f'too few parameters for mean {self.__class__.__name__}'
         assert len(p) >= self.pars.size, msg
@@ -67,7 +49,7 @@ class MeanModel():
         return self.__mul__(b)
 
 
-class Sum(MeanModel):
+class Sum(meanFunction):
     """ Sum of two mean functions """
     def __init__(self, m1, m2):
         self.m1, self.m2 = m1, m2
@@ -85,7 +67,7 @@ class Sum(MeanModel):
         self._parsize = m1._parsize + m2._parsize
         self.pars = np.r_[self.m1.pars, self.m2.pars]
 
-    @array_input
+    @_array_input
     def set_parameters(self, p):
         msg = f'too few parameters for mean {self.__class__.__name__}'
         assert len(p) >= self.pars.size, msg
@@ -102,20 +84,21 @@ class Sum(MeanModel):
     def __repr__(self):
         return "{0} + {1}".format(self.m1, self.m2)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         return self.m1(t) + self.m2(t)
 
 
-class Product(MeanModel):
+class Product(meanFunction):
     """ Product of two mean functions """
     def __init__(self, m1, m2):
         self.m1, self.m2 = m1, m2
-        self._param_names = tuple(list(m1._param_names) + list(m2._param_names))
+        self._param_names = tuple(
+            list(m1._param_names) + list(m2._param_names))
         self._parsize = m1._parsize + m2._parsize
         self.pars = np.r_[self.m1.pars, self.m2.pars]
 
-    @array_input
+    @_array_input
     def set_parameters(self, p):
         msg = f'too few parameters for mean {self.__class__.__name__}'
         assert len(p) >= self.pars.size, msg
@@ -132,44 +115,44 @@ class Product(MeanModel):
     def __repr__(self):
         return "{0} * {1}".format(self.m1, self.m2)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         return self.m1(t) * self.m2(t)
 
 
-##### f(x) = a #################################################################
-class Constant(MeanModel):
-    """  A constant offset mean function """
+class Constant(meanFunction):
+    """
+    A constant mean function
+
+    Args:
+        c: The constant value of the mean function
+    """
     _param_names = 'c',
     _parsize = 1
 
-    def __init__(self, c):
+    def __init__(self, c: float):
         super(Constant, self).__init__(c)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         return np.full(t.shape, self.pars[0])
 
 
+class MultiConstant(meanFunction):
+    """
+    Contant mean function for multiple instruments
 
-class MultiConstant(MeanModel):
-    """ Contant mean function for multiple instruments """
+    Args:
+        offsets: Values of the between-instrument offsets and the average
+                 value of the last instrument: [off_1, off_2, ..., avg_n]  
+                 Offsets are relative to the last instrument.
+        obsid: Indices of observations corresponding to each instrument. These
+               should be one-based: [1, 1, ..., 2, 2, 2, ..., 3]
+        time: Observed times. Should be the same size as `obsid`.
+    """
     _parsize = 0
 
-    def __init__(self, offsets, obsid, time):
-        """
-        Arguments
-        ---------
-        offsets : array, list
-            Initial values for the between-instrument offsets and the average
-            value of the last instrument: [off_1, off_2, ..., avg_n]. Offsets
-            are relative to the last instrument.
-        obsid : array
-            Indices of observations corresponding to each instrument. These
-            should be one-based: [1, 1, ..., 2, 2, 2, ..., 3]
-        time : array
-            Observed times. Should be the same size as `obsid`.
-        """
+    def __init__(self, offsets: np.ndarray, obsid: np.ndarray, time: np.ndarray):
         self.obsid = obsid
         self.time = time
         self._parsize = (np.ediff1d(obsid) == 1).sum() + 1
@@ -178,8 +161,9 @@ class MultiConstant(MeanModel):
         if isinstance(offsets, float):
             offsets = [offsets]
 
-        assert len(offsets) == self._parsize, \
-            f'wrong number of parameters, expected {self._parsize} got {len(offsets)}'
+        msg = 'wrong number of parameters, '
+        msg += f'expected {self._parsize} got {len(offsets)}'
+        assert len(offsets) == self._parsize, msg
 
         super().__init__(*offsets)
         self._param_names = [f'off{i}' for i in range(1, self._parsize)]
@@ -191,7 +175,7 @@ class MultiConstant(MeanModel):
         offset_times = np.mean((_1, _2), axis=0)
         return np.sort(np.r_[self.time[0], offset_times])
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         offsets, c = self.pars[:-1], self.pars[-1]
         offsets = np.pad(offsets, (0, 1))
@@ -206,108 +190,125 @@ class MultiConstant(MeanModel):
         return m
 
 
-
-##### f(x) = ax + b ############################################################
-class Linear(MeanModel):
+class Linear(meanFunction):
     """
-    A linear mean function
-    m(t) = slope * t + intercept
+    A linear mean function, using the mean time as reference  
+      `m(t) = slope * (t - mean(t)) + intercept`
+
+    Args:
+        slope: The slope of the linear function
+        intercept: The intercept, using mean(t) as reference
     """
     _param_names = ('slope', 'intercept')
     _parsize = 2
 
-    def __init__(self, slope, intercept):
+    def __init__(self, slope: float, intercept: float):
         super(Linear, self).__init__(slope, intercept)
-        self.slope, self.intercept = slope, intercept
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         tmean = t.mean()
         return self.pars[0] * (t - tmean) + self.pars[1]
 
 
-##### f(x) = ax**2 + bx + c ####################################################
-class Parabola(MeanModel):
+class Parabola(meanFunction):
     """
-    A 2nd degree polynomial mean function
-    m(t) = quad * t**2 + slope * t + intercept
+    A 2nd degree polynomial mean function  
+      `m(t) = quad * t² + slope * t + intercept`
+
+    Args:
+        quad: The quadratic term
+        slope: The linear term
+        intercept: The intercept
     """
     _param_names = ('slope', 'intercept', 'quadratic')
     _parsize = 3
 
-    def __init__(self, quad, slope, intercept):
+    def __init__(self, quad: float, slope: float, intercept: float):
         super(Parabola, self).__init__(quad, slope, intercept)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         return np.polyval(self.pars, t)
 
 
-##### f(x) = ax**3 + bx**2 + cx + d ############################################
-class Cubic(MeanModel):
+class Cubic(meanFunction):
     """
-    A 3rd degree polynomial mean function
-    m(t) = cub * t**3 + quad * t**2 + slope * t + intercept
+    A 3rd degree polynomial mean function  
+      `m(t) = cub * t³ + quad * t² + slope * t + intercept`
+
+    Args:
+        cub: The cubic term
+        quad: The quadratic term
+        slope: The linear term
+        intercept: The intercept
     """
-    _param_names = ('slope', 'intercept', 'quadratic', 'cubic')
+    _param_names = ('cub', 'quad', 'slope', 'intercept')
     _parsize = 4
 
-    def __init__(self, cub, quad, slope, intercept):
+    def __init__(self, cub: float, quad: float, slope: float, intercept: float):
         super(Cubic, self).__init__(cub, quad, slope, intercept)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         return np.polyval(self.pars, t)
 
 
-##### f(x) = a**2 * sine(2*pi*t/b + c) + d #####################################
-class Sine(MeanModel):
+class Sine(meanFunction):
     """
-    A sinusoidal mean function
-    m(t) = amplitude * sin( 2*pi*t/P + phase)
+    A sinusoidal mean function  
+      `m(t) = amplitude * sin(2*pi*t/P + phase)`
+
+    Args:
+        amplitude: The amplitude of the sinusoidal function
+        period: The period of the sinusoidal function
+        phase: The phase of the sinusoidal function
     """
     _param_names = ('amplitude', 'period', 'phase')
     _parsize = 3
 
-    def __init__(self, amplitude, period, phase):
+    def __init__(self, amplitude: float, period: float, phase: float):
         super(Sine, self).__init__(amplitude, period, phase)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         A, P, φ = self.pars
         return A * np.sin((2 * np.pi * t / P) + φ)
 
 
-##### f(x) = K*(e*np.cos(w+np.cos(w+nu(x))) + d ################################
-class Keplerian(MeanModel):
-    """ Keplerian function """
+class Keplerian(meanFunction):
+    """ 
+    Keplerian function
+
+    Error: The Keplerian mean function is not yet implemented
+         
+    """
     _param_names = ('P', 'K', 'e', 'w', 'Tp')
     _parsize = 5
 
     def __init__(self, P, K, e, w, Tp):
+        raise NotImplementedError
         super(Keplerian, self).__init__(P, K, e, w, Tp)
 
-    @array_input
+    @_array_input
     def __call__(self, t):
         P, K, e, w, Tp = self.pars
         return keplerian(t, P, K, e, w, Tp, 0.0)
 
 
-##### f(x) = (x - a)**(-3) + b #################################################
-class CubicSun(MeanModel):
-    """
-    A 3rd degree mean function
-    m(t) = (t - xshift)**(-3) + yshift
-    """
-    _parsize = 4
-    def __init__(self, xshift, yshift):
-        super(Cubic, self).__init__(xshift, yshift)
-        self.xshift = xshift
-        self.yshift = yshift
+# class CubicSun(meanFunction):
+#     """
+#     A 3rd degree mean function
+#     m(t) = (t - xshift)**(-3) + yshift
+#     """
+#     _parsize = 4
 
-    @array_input
-    def __call__(self, t):
-        return (t - self.xshift)**(-3) + self.yshift
+#     def __init__(self, xshift, yshift):
+#         super(Cubic, self).__init__(xshift, yshift)
+#         self.xshift = xshift
+#         self.yshift = yshift
 
+#     @_array_input
+#     def __call__(self, t):
+#         return (t - self.xshift)**(-3) + self.yshift
 
-### END

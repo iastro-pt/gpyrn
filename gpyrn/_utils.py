@@ -1,13 +1,32 @@
 """
 Collection of useful functions
 """
-import matplotlib.pyplot as plt
+
+from typing import Union
+from functools import wraps
+from random import shuffle
+
 import numpy as np
+import matplotlib.pyplot as plt
+from jax.numpy import ndarray as jnp_ndarray
 
 from scipy.stats import invgamma
 from scipy.linalg import cho_solve, cho_factor
 from scipy.optimize import minimize
-from random import shuffle
+
+Array = Union[np.ndarray, jnp_ndarray]
+
+
+def _array_input(f):
+    """ Decorator to provide the __call__ methods with an array """
+    @wraps(f)
+    def wrapped(self, t):
+        t = np.atleast_1d(t)
+        r = f(self, t)
+        return r
+    return wrapped
+
+
 
 ##### Semi amplitude calculation ##############################################
 def semi_amplitude(period, Mplanet, Mstar, ecc):
@@ -255,6 +274,7 @@ def rms(array):
     rms = np.sqrt(np.sum((array - mu)**2) / array.size)
     return rms
 
+
 def wrms(array, weights):
     """ Weighted root mean square of array, given weights 
         
@@ -275,4 +295,13 @@ def wrms(array, weights):
     rms = np.sqrt(np.sum(weights * (array - mu)**2) / np.sum(weights)) 
     return rms
 
-### END
+
+def anderson_darling_test(r):
+    from scipy.stats import anderson
+    result = anderson(r)
+    s = result.significance_level[result.statistic > result.critical_values]
+    if s.size == 0:
+        return result, f'A-D: {result.significance_level[-1]:.0f}%'
+    else:
+        return result, f'A-D: {s.max():.0f}%'
+

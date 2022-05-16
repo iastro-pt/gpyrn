@@ -30,6 +30,9 @@ nav:
     - One dataset: 'examples/one_dataset.md'
     - Several datasets: 'examples/several_datasets.md'
   - 'benchmarks.md'
+  - Reference:
+    - meanfunc: 'reference/meanfunc.md'
+    - covfunc: 'reference/covfunc.md'
   - 'Issue Tracker': 'https://github.com/iastro-pt/gpyrn/issues'
 
 copyright: Copyright &copy; 2021 - 2022 Institute of Astrophysics and Space Sciences
@@ -37,15 +40,18 @@ copyright: Copyright &copy; 2021 - 2022 Institute of Astrophysics and Space Scie
 #   generator: false
 
 plugins:
-- search
-- mkdocstrings
-- mkdocstrings:
-    default_handler: python
-    handlers:
-      python:
-        rendering:
-          show_source: false
-    custom_templates: templates
+  - search
+  - mkdocstrings
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          rendering:
+            members_order: source
+            show_source: false
+      watch:
+        - gpyrn
+      custom_templates: templates
 
 
 markdown_extensions:
@@ -63,4 +69,24 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences 
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+      options:
+        custom_icons:
+          - docs/overrides/.icons
+
+
+
+extra_javascript:
+  - /docs/javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+
+# extra:
+#   version:
+#     provider: mike
