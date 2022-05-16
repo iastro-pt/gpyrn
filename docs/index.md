@@ -24,8 +24,26 @@ Pedro Viana.
 ### Cite
 
 If you use this package in your work, please cite the following publication
+(currently under review)
 
-> TBD
+```bibtex
+@ARTICLE{2022arXiv220506627C,
+    author = {{Camacho}, J.~D. and {Faria}, J.~P. and {Viana}, P.~T.~P.},
+        title = "{Modelling stellar activity with Gaussian process regression networks}",
+    journal = {arXiv e-prints},
+    keywords = {Astrophysics - Earth and Planetary Astrophysics, Astrophysics - Solar and Stellar Astrophysics},
+        year = 2022,
+        month = may,
+        eid = {arXiv:2205.06627},
+        pages = {arXiv:2205.06627},
+archivePrefix = {arXiv},
+    eprint = {2205.06627},
+primaryClass = {astro-ph.EP},
+    adsurl = {https://ui.adsabs.harvard.edu/abs/2022arXiv220506627C},
+    adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+```
+
 
 
 ### License
