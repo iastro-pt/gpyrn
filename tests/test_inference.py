@@ -2,6 +2,7 @@ import pytest
 
 import numpy as np
 from gpyrn.meanfield import inference
+from gpyrn import covfunc, meanfunc
 
 
 def test_create_inference():
@@ -34,3 +35,19 @@ def test_create_inference_exception():
     with pytest.raises(AssertionError):
         _ = inference(1, t, y1, ye1, y2, ye2)
 
+
+def test_set_components():
+    t, y, yerr = np.random.rand(3, 10)
+    gprn = inference(1, t, y, yerr)
+
+    node = covfunc.SquaredExponential(1, 1)
+    weight = covfunc.SquaredExponential(1, 1)
+    mean = meanfunc.Constant(0)
+    jitter = 0.0
+    gprn.set_components(node, weight, mean, jitter)
+    assert gprn.nodes[0] is node
+
+    gprn.set_components([node], [weight], mean, jitter)
+    gprn.set_components([node], [weight], [mean], [jitter])
+
+    _ = gprn.ELBO
