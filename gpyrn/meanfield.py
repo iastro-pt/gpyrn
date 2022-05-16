@@ -1,6 +1,7 @@
 from functools import partial
 from itertools import chain
 import time as time_module
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -13,8 +14,79 @@ from ._utils import Array, _array_input
 import numpy as np
 from scipy.linalg import cho_solve
 from scipy.optimize import minimize
-from gpyrn import _gp
+from scipy.stats import multivariate_normal
+from emcee import EnsembleSampler, backends
+from emcee.utils import sample_ellipsoid
 
+# from numba import njit
+
+from ._plots import plot_prediction
+
+# def _cholNugget(matrix, maximum=1000):
+#     """
+#     Returns the cholesky decomposition to a given matrix, if it is not
+#     positive definite, a nugget is added to its diagonal.
+
+#     Parameters
+#     ----------
+#     matrix: array
+#         Matrix to decompose
+#     maximum: int
+#         Number of times a nugget is added.
+
+#     Returns
+#     -------
+#     L: array
+#         Matrix containing the Cholesky factor
+#     nugget: float
+#         Nugget added to the diagonal
+#     """
+#     nugget = 0  # our nugget starts as zero
+#     try:
+#         nugget += 1e-15
+#         L = cholesky(matrix, lower=True, overwrite_a=True)
+#         return L, nugget
+#     except LinAlgError:
+#         n = 0 # number of tries
+#         while n < maximum:
+#             try:
+#                 L = cholesky(matrix + nugget * np.identity(matrix.shape[0]),
+#                              lower=True, overwrite_a=True)
+#                 return L, nugget
+#             except LinAlgError:
+#                 nugget *= 10.0
+#             finally:
+#                 n += 1
+#         raise LinAlgError("Not positive definite, even with nugget.")
+
+
+def comp_results(a, b):
+    if not np.allclose(a, b):
+        print(a,b)
+        raise Exception
+
+
+
+# @njit
+@jax.jit
+def _cholNugget(matrix):
+    """
+    Returns the cholesky decomposition to a given matrix.
+
+    Parameters
+    ----------
+    matrix: array
+        Matrix to decompose
+
+    Returns
+    -------
+    L: array
+        Matrix containing the Cholesky factor
+    nugget: float
+        Nugget added to the diagonal
+    """
+    return jnp.linalg.cholesky(matrix), 0.0
+    #  + 1.25e-6 * np.eye(matrix.shape[0])), 1.25e-6
 
 
 class inference:
@@ -404,45 +476,6 @@ class inference:
         w = u[self.q * self.N:].reshape((self.p, self.q, self.N))
         return f, w
 
-
-    def _cholNugget(self, matrix, maximum=1000):
-        """
-        Returns the cholesky decomposition to a given matrix, if it is not
-        positive definite, a nugget is added to its diagonal.
-        
-        Parameters
-        ----------
-        matrix: array
-            Matrix to decompose
-        maximum: int
-            Number of times a nugget is added.
-        
-        Returns
-        -------
-        L: array
-            Matrix containing the Cholesky factor
-        nugget: float
-            Nugget added to the diagonal
-        """
-        nugget = 0 #our nugget starts as zero
-        try:
-            nugget += 1e-15
-            L = cholesky(matrix, lower=True, overwrite_a=True)
-            return L, nugget
-        except LinAlgError:
-            n = 0 #number of tries
-            while n < maximum:
-                try:
-                    L = cholesky(matrix + nugget*np.identity(matrix.shape[0]),
-                                 lower=True, overwrite_a=True)
-                    return L, nugget
-                except LinAlgError:
-                    nugget *= 10.0
-                finally:
-                    n += 1
-            raise LinAlgError("Not positive definite, even with nugget.")
-
-
     def _initMuVar(self, nodes, weights, jitter):
         a1 = [n.pars[0] for n in nodes]
         a2 = [w.pars[0] for w in weights]
@@ -469,32 +502,32 @@ class inference:
         var = np.random.rand(self.d, 1)
         return mu, var
 
-    def sampleIt(self, latentFunc, time=None):
+    def _sample_from_gp(self, kernel, time=None):
         """
-        Returns samples from the kernel
-        
-        Parameters
-        ----------
-        latentFunc: func
-            Covariance function
-        time: array
-            Time array
+        Returns random samples from a given kernel
 
-        Returns
-        -------
-        norm: array
-            Sample of K 
+        Args:
+            kernel: covFunction
+            time: array
         """
         if time is None:
             time = self.time
         mean = np.zeros_like(time)
-        K = self._tinyNuggetKMatrix(latentFunc, time)
+        K = self._tinyNuggetKMatrix(kernel, time)
         normal = multivariate_normal(mean, K, allow_singular=True).rvs()
         return normal
 
+    def sample(self, time=None):
+        nodes, weights, means, jitters = self._get_components()
+        node_samples = np.array([self._sample_from_gp(node) for node in nodes])
+        weight_samples = np.array(
+            [self._sample_from_gp(weight) for weight in weights])
+        print(node_samples.shape)
+        print(weight_samples.shape)
+        return node_samples, weight_samples
+
     def _get_components(self, nodes=None, weights=None, means=None,
                         jitters=None):
-
         # if nothing was given, componentes must be already set
         all_none = all([i is None for i in (nodes, weights, means, jitters)])
         msg = 'GPRN components not set, use set_components'
@@ -508,70 +541,78 @@ class inference:
         return nodes, weights, means, jitters
 
 
-##### Mean-Field Inference functions ##########################################
+    @property
+    def ELBO(self):
+        """ The evidence lower bound for the GPRN """
+        return self.ELBOcalc()[0]
 
     def ELBOcalc(self, nodes=None, weights=None, means=None, jitters=None,
                  max_iter=None, mu=None, var=None):
         """
-        Function to use to calculate the evidence lower bound
+        Calculate the evidence lower bound
 
-        Parameters
-        ----------
-        nodes: list of `covFunction` instances
-            Kernel(s) for the node(s)
-        weights: list of `covFunction` instances
-            Kernel(s) for the weight(s)
-        means: list of `meanFunction` instances
-            Mean functions
-        jitters: list of floats
-            Jitter terms
-        max_iter: int, default self.elbo_max_iter
-            Maximum number of iterations allowed in ELBO calculation
-        mu: array or str, optional
-            Variational means or 'init', 'random', or 'previous'
-        var: array or str, optional
-            Variational variances or 'init', 'random', or 'previous'
+        Args:
+            nodes: list of `covFunction` instances, optional
+                Kernel(s) for the node(s)
+            weights: list of `covFunction` instances, optional
+                Kernel(s) for the weight(s)
+            means: list of `meanFunction` instances, optional
+                Mean functions
+            jitters: list of floats, optional
+                Jitter terms
+            max_iter: int, default self.elbo_max_iter
+                Maximum number of iterations allowed in ELBO calculation
+            mu: array or str, optional
+                Variational means or 'init', 'random', or 'previous'
+            var: array or str, optional
+                Variational variances or 'init', 'random', or 'previous'
 
-        Returns
-        -------
-        ELBO: array
-            Value of the ELBO per iteration
-        mu: array
-            Optimized variational means
-        var: array
-            Optimized variational variance (diagonal of sigma)
-        """
+        Returns:
+            ELBO: array
+                Value of the ELBO per iteration
+            mu: array
+                Optimized variational means
+            var: array
+                Optimized variational variance (diagonal of sigma)
+            """
         # deal with inputs or get attributes
         nodes, weights, means, jitters = self._get_components(
             nodes, weights, means, jitters)
 
         # initial variational parameters
-        if mu is None and var is None:
+        if mu is None or var is None:
             mu = var = 'init'
 
-        if mu == 'previous' and var == 'previous':
+        if mu == 'previous' or var == 'previous':
+            # should_update = self._mu_var_iters > self.update_muvar_after
+            # if should_update:
+            # mu, var = self._randomMuVar()
+            # self._mu_var_iters = 0
             if self._mu is not None:
                 mu, var = self._mu, self._var
+                # self._mu_var_iters += 1
             else:
                 mu, var = self._initMuVar(nodes, weights, jitters)
+
         elif mu == 'random' and var == 'random':
             mu, var = self._randomMuVar()
+
         elif mu == 'init' and var == 'init':
             mu, var = self._initMuVar(nodes, weights, jitters)
 
         if max_iter is None:
             max_iter = 10000
 
-        jitt2 = np.array(jitters)**2
+        j2 = np.array(jitters)**2
         Kf = np.array([self._KMatrix(i, self.time) for i in nodes])
         Kw = np.array([self._KMatrix(j, self.time) for j in weights])
-        Lf = np.array([self._cholNugget(j)[0] for j in Kf])
-        Lw = np.array([self._cholNugget(j)[0] for j in Kw])
+        Lf = np.array([_cholNugget(j)[0] for j in Kf])
+        Lw = np.array([_cholNugget(j)[0] for j in Kw])
         y = np.concatenate(self.y) - self._mean(means)
         y = np.array(np.array_split(y, self.p))
 
         # To add new elbo values inside
-        ELBO, *_ = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2, mu, var)
+        ELBO, *_ = self.ELBOaux(Kf, Kw, Lf, Lw, y, j2, mu, var)
         elboArray = np.array([ELBO])
         iterNumber = 0
 
@@ -580,13 +621,13 @@ class inference:
 
         while iterNumber < max_iter:
             # Optimize mu and var analytically
-            ELBO, mu, var, _, _ = self.ELBOaux(Kf, Kw, Lf, Lw, y, jitt2, mu, var)
+            ELBO, mu, var, _, _ = self.ELBOaux(Kf, Kw, Lf, Lw, y, j2, mu, var)
             elboArray = np.append(elboArray, ELBO)
             iterNumber += 1
             # Stoping criteria:
-            if iterNumber > 5:
-                means = np.mean(elboArray[-5:])
-                criteria = np.abs(np.std(elboArray[-5:]) / means)
+            if iterNumber > 3:
+                means = np.mean(elboArray[-3:])
+                criteria = np.abs(np.std(elboArray[-3:]) / means)
                 if criteria < 1e-3 and criteria != 0:
                     self._mu = mu
                     self._var = var
@@ -713,20 +754,16 @@ class inference:
                                  axis=0)
 
 
-        RR = []
-
         for j in range(self.q):
-            # Kf_invf = np.linalg.inv(Kf[j])
-            Kf_inv = cho_solve((Lf[j], True), np.eye(self.N))
-            # print(Kf_invf[:5, :5])
-            # print()
-            # print(Kf_inv[:5, :5])
-            # input()
-            # assert np.allclose(Kf_invf, Kf_inv)
-            #? einsum gives a writeable view
-            Kf_inv_diagonal = np.einsum('jj->j', Kf_inv)
-            Kf_inv_diagonal += diagonal_vector[j]
-            sigma_f[j] = np.linalg.inv(Kf_inv)
+            # Woodbury matrix identity
+            sigma_f[j] = Kf[j] - Kf[j] @ np.linalg.solve(np.diag((1 / diagonal_vector[j])) + Kf[j], Kf[j])
+            # # Kf_invf = np.linalg.inv(Kf[j])
+            # Kf_inv = cho_solve((Lf[j], True), np.eye(self.N))
+            # # assert np.allclose(Kf_invf, Kf_inv)
+            # #? einsum gives a writeable view
+            # Kf_inv_diagonal = np.einsum('jj->j', Kf_inv)
+            # Kf_inv_diagonal += diagonal_vector[j]
+            # sigma_f[j] = np.linalg.inv(Kf_inv)
 
             # muW  shape: p x q x N
             # muF shape: q x N
@@ -737,7 +774,6 @@ class inference:
             # print(np.delete(muW * muF, j, axis=1))
             # print('b')
             residuals = y - np.sum(np.delete(muW * muF, j, axis=1), axis=1)
-            RR.append(residuals)
             # residuals shape: p x N --> p x q x N
             pred = np.sum(residuals * muW[:, j, :] / variance,
                           axis=0)
@@ -795,20 +831,19 @@ class inference:
 
         # mu_w = np.empty((self.q, self.N))
 
-        R = []
         for j in range(self.q):
             residuals = y - np.sum(np.delete(mu_f * muW, j, axis=1), axis=1)
-            R.append(residuals)
 
             for i in range(self.p):
-                # Kw_invf = np.linalg.inv(Kw[j, i])
-                Kw_inv = cho_solve((Lw[j, i], True), np.eye(self.N))
-                # print(Kw_invf, Kw_inv)
-                # assert np.allclose(Kw_invf, Kw_inv, rtol=0.01)
+                sigma_w[j, i] = Kw[j, i] - Kw[j, i] @ np.linalg.solve(np.diag((variance[i] / diagonal_vector[j])) + Kw[j,i], Kw[j,i])
+                # # Kw_invf = np.linalg.inv(Kw[j, i])
+                # Kw_inv = cho_solve((Lw[j, i], True), np.eye(self.N))
+                # # print(Kw_invf, Kw_inv)
+                # # assert np.allclose(Kw_invf, Kw_inv, rtol=0.01)
 
-                Kw_inv_diagonal = np.einsum('jj->j', Kw_inv)
-                Kw_inv_diagonal += diagonal_vector[j] / variance[i]
-                sigma_w[j, i] = np.linalg.inv(Kw_inv)
+                # Kw_inv_diagonal = np.einsum('jj->j', Kw_inv)
+                # Kw_inv_diagonal += diagonal_vector[j] / variance[i]
+                # sigma_w[j, i] = np.linalg.inv(Kw_inv)
 
                 #
                 # sum is over q, except j
