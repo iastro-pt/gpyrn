@@ -1,11 +1,8 @@
 import numpy as np
 from ._utils import Array, _array_input
-# from pykima.keplerian import keplerian
-
 
 __all__ = [
     'Constant', 'MultiConstant', 'Linear', 'Parabola', 'Cubic', 'Sine',
-    'Keplerian'
 ]
 
 
@@ -276,24 +273,24 @@ class Sine(meanFunction):
         return A * np.sin((2 * np.pi * t / P) + φ)
 
 
-class Keplerian(meanFunction):
-    """ 
-    Keplerian function
+# class Keplerian(meanFunction):
+#     """ 
+#     Keplerian function
 
-    Error: The Keplerian mean function is not yet implemented
+#     Error: The Keplerian mean function is not yet implemented
          
-    """
-    _param_names = ('P', 'K', 'e', 'w', 'Tp')
-    _parsize = 5
+#     """
+#     _param_names = ('P', 'K', 'e', 'w', 'Tp')
+#     _parsize = 5
 
-    def __init__(self, P, K, e, w, Tp):
-        raise NotImplementedError
-        super(Keplerian, self).__init__(P, K, e, w, Tp)
+#     def __init__(self, P, K, e, w, Tp):
+#         raise NotImplementedError
+#         super(Keplerian, self).__init__(P, K, e, w, Tp)
 
-    @_array_input
-    def __call__(self, t):
-        P, K, e, w, Tp = self.pars
-        return keplerian(t, P, K, e, w, Tp, 0.0)
+#     @_array_input
+#     def __call__(self, t):
+#         P, K, e, w, Tp = self.pars
+#         return keplerian(t, P, K, e, w, Tp, 0.0)
 
 
 # class CubicSun(meanFunction):
