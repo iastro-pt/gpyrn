@@ -1,7 +1,6 @@
 from functools import partial
 from itertools import chain
 import time as time_module
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -10,6 +9,7 @@ jax.config.update("jax_enable_x64", True)
 
 from . import _gp, covfunc, meanfunc
 from ._utils import Array, _array_input
+from ._plots import plot_prediction
 
 import numpy as np
 from scipy.linalg import cho_solve
@@ -17,10 +17,10 @@ from scipy.optimize import minimize
 from scipy.stats import multivariate_normal
 from emcee import EnsembleSampler, backends
 from emcee.utils import sample_ellipsoid
+import tqdm
 
-# from numba import njit
 
-from ._plots import plot_prediction
+NUGGET = 1e-6
 
 # def _cholNugget(matrix, maximum=1000):
 #     """
@@ -62,12 +62,11 @@ from ._plots import plot_prediction
 
 def comp_results(a, b):
     if not np.allclose(a, b):
-        print(a,b)
+        print(a, b)
         raise Exception
 
 
 
-# @njit
 @jax.jit
 def _cholNugget(matrix):
     """
@@ -89,6 +88,16 @@ def _cholNugget(matrix):
     #  + 1.25e-6 * np.eye(matrix.shape[0])), 1.25e-6
 
 
+class prediction:
+    def __init__(self, pred, var, nodes_weights=None):
+        self.pred = pred
+        self.var = var
+        self.std = np.sqrt(var)
+        if nodes_weights is not None:
+            self.node_pred = nodes_weights[0]
+            self.weight_pred = nodes_weights[1]
+
+
 class inference:
     """
     Mean-field variational inference for GPRNs.
@@ -103,7 +112,7 @@ class inference:
             The observed data in the following order:
                 y1, y1error, y2, y2error, ...
     """
-    def __init__(self, q: int, time: Array, *args):
+    def __init__(self, q: int, time: Array, *args, names=None):
         self.q = q
         self.time = time
         self.N = self.time.size
@@ -125,6 +134,13 @@ class inference:
         self.y = np.concatenate([args[::2]])
         self.yerr = np.concatenate([args[1::2]])
         self.yerr2 = self.yerr**2
+
+        if names is None:
+            self.names = None
+        else:
+            msg = f'wrong number of names, expected {self.p}'
+            assert len(names) == self.p, msg
+            self.names = names
 
         self._components_set = False
         self._frozen_mask = np.array([])
@@ -176,6 +192,7 @@ class inference:
         self.means = means
         self.jitters = np.array(jitters, dtype=np.float)
         self._components_set = True
+        self._initMuVar(nodes, weights, jitters)
 
     def get_parameters(self, nodes=None, weights=None, means=None,
                        jitters=None, include_frozen=False):
@@ -413,18 +430,18 @@ class inference:
     def _KMatrix(self, kernel, time=None):
         """
         Returns the covariance matrix created by evaluating a given kernel at
-        inputs time. For stability, a 1e-6 nugget is added to the diagonal.
+        inputs time. For stability, a nugget is added to the diagonal.
 
         Args:
             kernel : instance of covFunc
             time : array, optional
-        
+
         Returns:
             K: array
                 Matrix of a covariance function
         """
         r = time[:, None] - time[None, :]
-        K = kernel(r) + 1e-6 * np.eye(time.size)
+        K = kernel(r) + NUGGET * np.eye(time.size)
         return K
 
     def _tinyNuggetKMatrix(self, kernel, time=None):
@@ -522,8 +539,6 @@ class inference:
         node_samples = np.array([self._sample_from_gp(node) for node in nodes])
         weight_samples = np.array(
             [self._sample_from_gp(weight) for weight in weights])
-        print(node_samples.shape)
-        print(weight_samples.shape)
         return node_samples, weight_samples
 
     def _get_components(self, nodes=None, weights=None, means=None,
@@ -544,7 +559,7 @@ class inference:
     @property
     def ELBO(self):
         """ The evidence lower bound for the GPRN """
-        return self.ELBOcalc()[0]
+        return self.ELBOcalc(mu='previous', var='previous')[0]
 
     def ELBOcalc(self, nodes=None, weights=None, means=None, jitters=None,
                  max_iter=None, mu=None, var=None):
@@ -694,7 +709,8 @@ class inference:
         # Expected log-likelihood
         LogL = self._expectedLogLike(y, jitt2, sigmaF, muF, sigmaW, muW)
         # Evidence Lower Bound
-        ELBO = (LogL + LogP + Ent) / self.q
+        ELBO = (LogL + LogP + Ent) #/ self.q
+        # print(LogL, LogP, Ent)
         return ELBO, new_mu, new_var, sigmaF, sigmaW
 
     # @partial(jax.jit, static_argnums=(0,))
@@ -753,7 +769,6 @@ class inference:
         diagonal_vector = np.sum((muW * muW + varW) / variance[:, None, :],
                                  axis=0)
 
-
         for j in range(self.q):
             # Woodbury matrix identity
             sigma_f[j] = Kf[j] - Kf[j] @ np.linalg.solve(np.diag((1 / diagonal_vector[j])) + Kf[j], Kf[j])
@@ -769,10 +784,6 @@ class inference:
             # muF shape: q x N
             # sum is over q, except j
             # y shape: p x N
-            # print(muW * muF)
-            # print('a')
-            # print(np.delete(muW * muF, j, axis=1))
-            # print('b')
             residuals = y - np.sum(np.delete(muW * muF, j, axis=1), axis=1)
             # residuals shape: p x N --> p x q x N
             pred = np.sum(residuals * muW[:, j, :] / variance,
@@ -790,17 +801,10 @@ class inference:
                         if k != j:
                             sumNj += muW[i, k, :] * muF[k, :].reshape(self.N)
                     auxCalc = auxCalc + ((y[i, :] - sumNj)*muW[i,j,:]) / (jitt2[i] + self.yerr2[i, :])
-                    # R = y[i, :] - sumNj
-                    # print(R)
-                    # print(RR[j][i])
-                    # input()
 
                 comp_results(diagFj, diagonal_vector[j])
                 CovF = np.diag(1 / diagFj) + Kf[j]
                 sigF = Kf[j] - Kf[j] @ np.linalg.solve(CovF, Kf[j])
-
-                # print(auxCalc)
-                # input()
 
                 sigma_f_og.append(sigF)
                 mu_f_og.append(sigF @ auxCalc)
@@ -818,15 +822,9 @@ class inference:
         # Kw shape: q x p x N x N
         # sigma_f shape: q x N x N
         # mu_f shape: q x N
-        # print(sigma_f.shape)
-        # print(mu_f.shape)
 
-        # print(np.einsum('ijj->ij', sigma_f).shape)
         #? this one is also a view but the + creates a copy
         diagonal_vector = mu_f * mu_f + np.einsum('ijj->ij', sigma_f)
-        # print(diagonal_vector.shape)
-        # print(variance.shape)
-        # input()
         # diagonal_vector = diagonal_vector / variance
 
         # mu_w = np.empty((self.q, self.N))
@@ -1092,6 +1090,7 @@ class inference:
                                       mu='previous', var='previous')
         end = time_module.time()
 
+
         spaces = 20 * ' '
         print(f'ELBO={elbo:7.2f} (took {1e3*(end-start):5.2f} ms){spaces}',
               end='\r', flush=True)
@@ -1099,7 +1098,7 @@ class inference:
         return -elbo
 
 
-    def optimize(self, vars=None, **kwargs):
+    def optimize(self, vars=None, max_elbo_iter=None, **kwargs):
         """
         Optimize (maximize) the ELBO. If provided, `vars` controls the
         parameters which are free during the optimization.
@@ -1160,7 +1159,7 @@ class inference:
                     vars = [list of parameter_names]
                         sample parameter_names and hold the others fixed
             niter: int
-                Number of MCMC iterations 
+                Number of MCMC iterations
             **kwargs : dict
                 Keyword arguments passed directly to emcee.EnsembleSampler
         """
@@ -1244,38 +1243,56 @@ class inference:
 
         sampler = EnsembleSampler(nwalkers, ndim, logposterior, backend=be)
 
+        # adaptation
+        if adapt:
+            print('Running adaptation...')
+            sampler.run_mcmc(p0, 100)
+            p0 = sampler.get_last_sample()
+            sampler.reset()
+
         # track the average autocorrelation time estimate
         index = 0
         autocorr = np.empty(niter)
         old_tau = np.inf
 
-        for sample in sampler.sample(p0, iterations=niter, progress=True):
-            if sampler.iteration % 10 == 0:
-                print(sample.log_prob.max())
-            # check convergence every 100 steps
-            if sampler.iteration % 10:
-                continue
+        with tqdm.tqdm(total=niter) as pbar:
+            for sample in sampler.sample(p0, iterations=niter):
+                pbar.update(1)
+                # pbar.set_description()
+                # if sampler.iteration % 10 == 0:
+                #     print(sample.log_prob.max())
+                # check convergence every 100 steps
+                if sampler.iteration % 10:
+                    continue
 
-            # Compute the autocorrelation time so far
-            # Using tol=0 means that we'll always get an estimate even
-            # if it isn't trustworthy
-            tau = sampler.get_autocorr_time(tol=0)
-            autocorr[index] = np.mean(tau)
-            index += 1
+                # Compute the autocorrelation time so far
+                # Using tol=0 means that we'll always get an estimate even
+                # if it isn't trustworthy
+                tau = sampler.get_autocorr_time(tol=0)
+                autocorr[index] = np.mean(tau)
+                index += 1
 
-            # Check convergence
-            converged = np.all(tau * 100 < sampler.iteration)
-            converged &= np.all(np.abs(old_tau - tau) / tau < 0.01)
-            if converged:
-                print('MCMC converged!')
-                break
-            old_tau = tau
+                # Check convergence
+                converged = np.all(tau * 100 < sampler.iteration)
+                converged &= np.all(np.abs(old_tau - tau) / tau < 0.01)
+                if converged:
+                    print('MCMC converged!')
+                    break
+                old_tau = tau
+
+        MAPindex = sampler.flatlnprobability.argmax()
+        MAP = sampler.flatlnprobability[MAPindex]
+        MAPpar = sampler.flatchain[MAPindex]
+        self.set_parameters(MAPpar)
+        print('MAP:', MAP)
+        print('ELBO:', self.ELBO)
+        print('setting parameters to their MAP values')
 
         return sampler
 
 
     def _Prediction(self, nodes=None, weights=None, means=None, jitters=None,
-                   tstar=None, mu=None, var=None, separate=False):
+                    tstar=None, mu=None, var=None, separate=False, save=True):
         """
         Prediction for mean-field inference
 
@@ -1363,7 +1380,14 @@ class inference:
         if separate:
             predictives = np.array(predictives)
             sepPredictives = np.array([nPred, wPred], dtype=object)
+            if save:
+                self.prediction = prediction(predictives, predictivesVar,
+                                             sepPredictives)
             return predictives, predictivesVar, sepPredictives
+
+        if save:
+            self.prediction = prediction(predictives, predictivesVar)
+
         return predictives, predictivesVar
 
     def predict(self, tstar=None, nn=1000):
@@ -1380,7 +1404,7 @@ class inference:
         if tstar is None:
             mi, ma = self.time.min(), self.time.max()
             tptp = self.time.ptp()
-            tstar = np.linspace(mi - 0.2 * tptp, ma + 0.2 * tptp, nn)
+            tstar = np.linspace(mi - 0.1 * tptp, ma + 0.1 * tptp, nn)
 
         # a, v = self._Prediction()
         aa, vv, bb = self._Prediction(tstar=tstar, separate=True)
