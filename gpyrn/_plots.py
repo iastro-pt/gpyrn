@@ -9,7 +9,8 @@ def equal_y_axis(ax):
     ax.set_ylim(-m, m)
 
 
-def plot_prediction(gprn, nn=1000, tstar=None, over=0.2, title=None):
+def plot_prediction(gprn, nn=1000, tstar=None, over=0.1, show_title=True,
+                    title=None):
     if tstar is None:
         mi, ma = gprn.time.min(), gprn.time.max()
         tptp = gprn.time.ptp()
@@ -44,16 +45,36 @@ def plot_prediction(gprn, nn=1000, tstar=None, over=0.2, title=None):
             ['pred3', 'd3'], ['pred3', 'd3'],# ['pred3', 'd3'],
             ['resid3', 'd3'],
         ]
+    elif gprn.p == 4:
+        layout = [
+            ['node', 'node'],
+            ['node', 'node'],
+            ['pred1', 'd1'], ['pred1', 'd1'],# ['pred1', 'd1'],
+            ['resid1', 'd1'],
+            ['pred2', 'd2'], ['pred2', 'd2'],# ['pred2', 'd2'],
+            ['resid2', 'd2'],
+            ['pred3', 'd3'], ['pred3', 'd3'],# ['pred3', 'd3'],
+            ['resid3', 'd3'],
+            ['pred4', 'd4'], ['pred4', 'd4'],# ['pred4', 'd4'],
+            ['resid4', 'd4'],
+        ]
+    else:
+        raise NotImplementedError('too many datasets for a pretty plot!')
 
     fig = plt.figure(constrained_layout=False, figsize=(10, 4 * gprn.p))
-    if title is not None:
-        fig.suptitle(title)
+    if show_title:
+        if title is None:
+            title = f'Q={gprn.q} P={gprn.p} ELBO={gprn.ELBO:.2f}'
+            fig.suptitle(title)
+        else:
+            fig.suptitle(title)
 
     axs = fig.subplot_mosaic(layout)
 
     means = []
     for i in range(gprn.p):
-        axs[f'pred{i+1}'].set(xlabel='', ylabel=f'y{i+1}')
+        ylabel = f'y{i+1}' if gprn.names is None else gprn.names[i]
+        axs[f'pred{i+1}'].set(xlabel='', ylabel=ylabel)
         axs[f'pred{i+1}'].errorbar(gprn.time, gprn.y[i], gprn.yerr[i],
                                    fmt='ok', ms=2)
 
@@ -83,11 +104,13 @@ def plot_prediction(gprn, nn=1000, tstar=None, over=0.2, title=None):
     for i in range(gprn.p):
         axs[f'd{i+1}'].set(xlabel='')
         axs[f'd{i+1}'].set_ylabel('weight', color='C0')
-        axs[f'd{i+1}'].set_title('weight(s) and mean', loc='left', fontsize=10)
+        s = '' if gprn.q == 1 else '(s)'
+        axs[f'd{i+1}'].set_title(f'weight{s} and mean', fontsize=10)
         # weight(s)
         for w in bb[1][i::gprn.p]:
             axs[f'd{i+1}'].plot(tstar, w, alpha=0.6)
         axs[f'd{i+1}'].tick_params(axis='y', labelcolor='C0')
+        axs[f'd{i+1}'].axhline(y=0, color='gray', alpha=0.2)
 
         # mean
         ax2 = axs[f'd{i+1}'].twinx()
@@ -112,6 +135,7 @@ def plot_prediction(gprn, nn=1000, tstar=None, over=0.2, title=None):
     _s = '' if gprn.q == 1 else 's'
     axs['node'].set_title('node' + _s, loc='left', fontsize=10)
     axs['node'].plot(tstar, bb[0].T, '-')
+    axs['node'].axhline(y=0, ls='--', color='k', alpha=0.3)
 
     equal_y_axis(axs['node'])
     ax0 = axs['pred1']
