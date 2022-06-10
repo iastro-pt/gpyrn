@@ -17,7 +17,7 @@ from scipy.optimize import minimize
 from scipy.stats import multivariate_normal
 from emcee import EnsembleSampler, backends
 from emcee.utils import sample_ellipsoid
-import tqdm
+# import tqdm
 
 
 NUGGET = 1e-6
@@ -1349,30 +1349,30 @@ class inference:
         autocorr = np.empty(niter)
         old_tau = np.inf
 
-        with tqdm.tqdm(total=niter) as pbar:
-            for sample in sampler.sample(p0, iterations=niter):
-                pbar.update(1)
-                # pbar.set_description()
-                # if sampler.iteration % 10 == 0:
-                #     print(sample.log_prob.max())
-                # check convergence every 100 steps
-                if sampler.iteration % 10:
-                    continue
+        # with tqdm.tqdm(total=niter) as pbar:
+        for sample in sampler.sample(p0, iterations=niter):
+            # pbar.update(1)
+            # pbar.set_description()
+            # if sampler.iteration % 10 == 0:
+            #     print(sample.log_prob.max())
+            # check convergence every 100 steps
+            if sampler.iteration % 10:
+                continue
 
-                # Compute the autocorrelation time so far
-                # Using tol=0 means that we'll always get an estimate even
-                # if it isn't trustworthy
-                tau = sampler.get_autocorr_time(tol=0)
-                autocorr[index] = np.mean(tau)
-                index += 1
+            # Compute the autocorrelation time so far
+            # Using tol=0 means that we'll always get an estimate even
+            # if it isn't trustworthy
+            tau = sampler.get_autocorr_time(tol=0)
+            autocorr[index] = np.mean(tau)
+            index += 1
 
-                # Check convergence
-                converged = np.all(tau * 100 < sampler.iteration)
-                converged &= np.all(np.abs(old_tau - tau) / tau < 0.01)
-                if converged:
-                    print('MCMC converged!')
-                    break
-                old_tau = tau
+            # Check convergence
+            converged = np.all(tau * 100 < sampler.iteration)
+            converged &= np.all(np.abs(old_tau - tau) / tau < 0.01)
+            if converged:
+                print('MCMC converged!')
+                break
+            old_tau = tau
 
         MAPindex = sampler.flatlnprobability.argmax()
         MAP = sampler.flatlnprobability[MAPindex]
