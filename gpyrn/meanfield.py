@@ -1211,7 +1211,19 @@ class inference:
                 raise ValueError(msg)
 
         kwargs.setdefault('method', 'Nelder-Mead')
-        res = minimize(self.nELBO, self.get_parameters(), **kwargs)
+        if kwargs['method'] == 'Nelder-Mead':
+            kwargs.setdefault('options', {'fatol': 1e-2})
+
+        if max_elbo_iter is None:
+            args = ()
+        else:
+            args = (max_elbo_iter, )
+
+        res = minimize(self.nELBO, self.get_parameters(), args=args, **kwargs)
+
+        if not res.success:
+            print(res.message)
+
         self.set_parameters(res.x)
 
         if vars is not None:
