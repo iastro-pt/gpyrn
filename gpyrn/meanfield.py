@@ -144,6 +144,7 @@ class inference:
 
         self._components_set = False
         self._frozen_mask = np.array([])
+        self._shared_mask = np.array([])
         self._mu, self._var = None, None
         self._mu_var_iters = 0
         self.update_muvar_after = 50
@@ -270,6 +271,9 @@ class inference:
                 msg += f'expected {ep} (all) or {fp} (not frozen)'
             raise ValueError(msg)
 
+        # set the shared parameters to the same values
+        parameters = parameters[self.shared_mask]
+
         it = [self.nodes, self.weights, self.means]
         for component in chain.from_iterable(it):
             parameters = component.set_parameters(parameters)
@@ -395,6 +399,77 @@ class inference:
         msg = 'Do not set frozen_mask, use thaw_parameter/freeze_parameter'
         raise NotImplementedError(msg)
 
+
+    def share(self, arg1: str, arg2: str):
+        self.shared_mask
+
+        # keep originals before changing them
+        oarg1 = arg1
+        oarg2 = arg2
+
+        names = list(self.parameters_dict.keys())
+        if '*' in arg1:
+            assert '*' in arg2
+            arg1 = arg1.replace('*', '')
+            arg2 = arg2.replace('*', '')
+            for index, known_name in enumerate(names):
+                if arg1 in known_name:
+                    index1 = index
+                    index2 = names.index(known_name.replace(arg1, arg2))
+                    self._shared_mask[index2] = self._shared_mask[index1]
+                    self.freeze_parameter(index=index2)
+        else:
+            assert arg1 in names
+            assert arg2 in names
+            index1 = names.index(arg1)
+            index2 = names.index(arg2)
+            self._shared_mask[index2] = self._shared_mask[index1]
+            self.freeze_parameter(index=index2)
+
+        print(f'setting parameters {oarg2} to the values of {oarg1}')
+        self.set_parameters(self.get_parameters())
+
+    def unshare(self, arg1: str, arg2: str):
+        self.shared_mask
+
+        names = list(self.parameters_dict.keys())
+        if '*' in arg1:
+            assert '*' in arg2
+            arg1 = arg1.replace('*', '')
+            arg2 = arg2.replace('*', '')
+            for index, known_name in enumerate(names):
+                if arg1 in known_name:
+                    index1 = index
+                    index2 = names.index(known_name.replace(arg1, arg2))
+                    self._shared_mask[index2] = self._shared_mask[index1]
+                    self.freeze_parameter(index=index2)
+        else:
+            assert arg1 in names
+            assert arg2 in names
+            index1 = names.index(arg1)
+            index2 = names.index(arg2)
+            self._shared_mask[index2] = index2
+            self.thaw_parameter(index=index2)
+
+    @property
+    def shared_mask(self):
+        """ Integer mask for the shared parameters """
+        msg = 'GPRN components not set, use set_components'
+        assert self._components_set, msg
+        if self._shared_mask.size == 0:
+            self._shared_mask = np.arange(self.n_parameters)
+        return self._shared_mask
+
+    @shared_mask.setter
+    def shared_mask(self, mask):
+        msg = 'Do not set shared_mask, use share/unshare'
+        raise NotImplementedError(msg)
+
+    def _free_all_unshared(self):
+        not_shared = np.unique(self.shared_mask)
+        for i in range(self.n_parameters):
+            if i in not_shared:
+                self.free_parameter(i)
 
     def _mean(self, means, time=None):
         """
@@ -1117,6 +1192,7 @@ class inference:
                 Keyword arguments passed directly to scipy.optimize.minimize
         """
         if vars is not None:
+            old_frozen = self.frozen_mask
             if isinstance(vars, str):
                 if '-' in vars:
                     vars = vars.replace('-', '')
@@ -1136,6 +1212,10 @@ class inference:
         kwargs.setdefault('method', 'Nelder-Mead')
         res = minimize(self.nELBO, self.get_parameters(), **kwargs)
         self.set_parameters(res.x)
+
+        if vars is not None:
+            self._frozen_mask = old_frozen
+
         return res
 
     def mcmc(self, priors, p0=None, vars=None, niter=500, **kwargs):
