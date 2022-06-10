@@ -998,7 +998,7 @@ class inference:
 
         # shape: p x N                Nxqxp   Nxq
         Ωnu = jnp.einsum('ijk,ij->ik', mu_w.T, mu_f[0].T).T
-        resid = self.y - Ωnu
+        resid = y - Ωnu
         term2 = -0.5 * jnp.sum(resid**2 / variance)
         logl += term2
 
@@ -1007,6 +1007,7 @@ class inference:
             for n in range(self.N):
                 for p in range(self.p):
                     Ydiff = y[p, n] - mu_f[0, :, n] @ mu_w[p, :, n].T
+                    comp_results(Ωnu[p, n], mu_f[0, :, n] @ mu_w[p, :, n].T)
                     bottom = jitt2[p] + self.yerr2[p, n]
                     sumN.append((Ydiff.T * Ydiff) / bottom)
             term2_og = -0.5 * np.sum(sumN)
