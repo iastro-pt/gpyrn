@@ -1518,4 +1518,14 @@ class inference:
         # observed datasets as "plates"
         pgm.add_plate([1.5, 0.2, 2, 3.2], label=r"exposure $i$", shift=-0.1)
         pgm.add_plate([2, 0.5, 1, 1], label=r"pixel $j$", shift=-0.1)
-        pgm.render()
+
+    def save(self, filename):
+        import pickle
+        print(f'Saving GPRN with pickle to {filename}')
+        pickle.dump(self, open(filename, 'wb'))
+
+    @classmethod
+    def load(cls, filename):
+        import pickle
+        gprn = pickle.load(open(filename, 'rb'))
+        return gprn
