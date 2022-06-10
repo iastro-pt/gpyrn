@@ -1231,7 +1231,8 @@ class inference:
 
         return res
 
-    def mcmc(self, priors, p0=None, vars=None, niter=500, **kwargs):
+    def mcmc(self, priors, p0=None, vars=None, niter=500, adapt=True,
+             **kwargs):
         """
         Sample the posterior distribution for the GPRN parameters. If provided,
         `vars` controls the parameters which are free in the MCMC.
