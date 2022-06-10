@@ -1,6 +1,8 @@
 import numpy as np
 from ._utils import _array_input
 
+PI = np.pi
+
 
 class covFunction:
     """
@@ -210,7 +212,7 @@ class Periodic(covFunction):
 
     def __call__(self, r):
         θ, P, ell = self.pars
-        return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 / ell**2)
+        return θ**2 * np.exp(-2 * np.sin(PI * np.abs(r) / P)**2 / ell**2)
 
     def _dkdxidj(self, r):
         θ, P, ell = self.pars
@@ -309,7 +311,7 @@ class RQP(covFunction):
 
     def __call__(self, r):
         θ, α, ℓe, P, ℓp = self.pars
-        return θ**2 * np.exp(-2 * np.sin(np.pi * np.abs(r) / P)**2 /
+        return θ**2 * np.exp(-2 * np.sin(PI * np.abs(r) / P)**2 /
                              ℓp**2) * (1 + r**2 / (2 * α * ℓe**2))**(-α)
 
 
@@ -328,7 +330,7 @@ class COSINE(covFunction):
         super(COSINE, self).__init__(theta, P)
 
     def __call__(self, r):
-        return self.pars[0]**2 * np.cos(2 * np.pi * np.abs(r) / self.pars[1])
+        return self.pars[0]**2 * np.cos(2 * PI * np.abs(r) / self.pars[1])
 
 
 class Exponential(covFunction):
