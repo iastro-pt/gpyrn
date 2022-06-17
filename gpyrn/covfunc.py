@@ -461,7 +461,6 @@ class Piecewise(covFunction):
     
     Args:
         eta: float
-
     """
     def __init__(self, eta):
         super(Piecewise, self).__init__(eta)
@@ -479,14 +478,11 @@ class Paciorek(covFunction):
     """
     Definition of the modified Paciorek's kernel (stationary version). 
     
-    Parameters
-    ----------
-    amplitude: float
-        Amplitude/amplitude of the kernel
-    ell_1: float
-        First lenght scale
-    ell_2: float
-        Second lenght scale
+    Args:
+        amplitude: float
+        ell_1: float
+        ell_2: float
+        
     """
     def __init__(self, amplitude, ell_1, ell_2):
         super(Paciorek, self).__init__(amplitude, ell_1, ell_2)
@@ -505,16 +501,11 @@ class NewPeriodic(covFunction):
     Definition of a new periodic kernel derived from mapping the rational 
     quadratic kernel to the 2D space u(x) = (cos x, sin x)
     
-    Parameters
-    ----------
-    amplitude: float
-        Amplitude of the kernel
-    alpha2: float
-        Alpha parameter of the rational quadratic mapping
-    P: float
-        Period
-    l: float
-        Periodic lenght scale
+    Args:
+        amplitude: float
+        alpha2: float
+        P: float
+        l: float
     """
     def __init__(self, amplitude, alpha2, P, l):
         super(NewPeriodic, self).__init__(amplitude, alpha2, P, l)
@@ -534,18 +525,12 @@ class QuasiNewPeriodic(covFunction):
     quadratic kernel to the 2D space u(x) = (cos x, sin x) and multiplying it by
     a squared exponential kernel
     
-    Parameters
-    ----------
-    amplitude: float
-        Amplitude of the kernel
-    alpha2: float
-        Alpha parameter of the rational quadratic mapping
-    ell_e: float
-        Aperiodic lenght scale
-    P: float
-        Period
-    ell_p: float
-        Periodic lenght scale
+    Args:
+        amplitude: float
+        alpha2: float
+        ell_e: float
+        P: float
+        ell_p: float
     """
     def __init__(self, amplitude, alpha2, ell_e, P, ell_p):
         super(QuasiNewPeriodic, self).__init__(amplitude, alpha2, ell_e, P, ell_p)
@@ -567,20 +552,13 @@ class NewRQP(covFunction):
     quadratic kernel to the 2D space u(x) = (cos x, sin x) and multiplying it by
     a rational quadratic kernel
     
-    Parameters
-    ----------
-    amplitude: float
-        Amplitude of the kernel
-    alpha1: float
-        Alpha parameter of the rational quadratic kernel
-    ell_e: float
-        Aperiodic lenght scale
-    P: float
-        Period
-    ell_p: float
-        Periodic lenght scale
-    alpha2: float
-        Another alpha parameter from the mapping 
+    Args:
+        amplitude: float
+        alpha1: float
+        ell_e: float
+        P: float
+        ell_p: float
+        alpha2: float
     """
     def __init__(self, amplitude, alpha1, alpha2, ell_e, P, ell_p):
         super(NewRQP, self).__init__(amplitude, alpha1, alpha2,
@@ -604,16 +582,11 @@ class HarmonicPeriodic(covFunction):
     with a N number of harmonics. Obtained by mapping the squared exponetial
     with the Lagrange trigonometric identities
     
-    Parameters
-    ----------
-    N: int
-        Number of harmonics
-    amplitude: float
-        Amplitude of the kernel
-    P: float
-        Period
-    ell: float
-        Periodic lenght scale
+    Args:
+        N: int
+        amplitude: float
+        P: float
+        ell: float
     """
     def __init__(self, N, amplitude, P, ell):
         super(HarmonicPeriodic, self).__init__(N, amplitude, P, ell)
@@ -639,18 +612,13 @@ class QuasiHarmonicPeriodic(covFunction):
     Definition of a quasi-periodic kernel that models a periodic signals 
     with a N number of harmonics. Comes from the multiplication of the 
     squared exponential by the HarmonicPeriodic 
-    Parameters
-    ----------
-    N: int
-        Number of harmonics
-    amplitude: float
-        Amplitude of the kernel
-    ell_e: float
-        Aperiodic lenght scale
-    P: float
-        Period
-    ell_p: float
-        Periodic lenght scale
+
+    Args:
+        N: int
+        amplitude: float
+        ell_e: float
+        P: float
+        ell_p: float
     """
     def __init__(self, N, amplitude, ell_e, P, ell_p):
         super(QuasiHarmonicPeriodic, self).__init__(amplitude, ell_e, P, ell_p)
@@ -681,16 +649,11 @@ class CosPeriodic(covFunction):
     
     SPOILER ALERT: If you do the math the phi terms disappear 
     
-    Parameters
-    ----------
-    amplitude: float
-        Amplitude of the kernel
-    P: float
-        Period
-    ell_p: float
-        Periodic lenght scale
-    phi: float
-        Phase
+    Args:
+        amplitude: float
+        P: float
+        ell_p: float
+        phi: float
     """
     def __init__(self, amplitude, P, ell):
         super(CosPeriodic, self).__init__(P, ell)
@@ -708,16 +671,11 @@ class QuasiCosPeriodic(covFunction):
     and the squared exponential kernel, it is just another the quasi-periodic 
     kernel.
     
-    Parameters
-    ----------
-    amplitude: float
-        Amplitude of the kernel
-    ell_e: float
-        Evolutionary time scale
-    ell_p: float
-        Length scale of the periodic component
-    P: float
-        Kernel periodicity
+    Args:
+        amplitude: float
+        ell_e: float
+        ell_p: float
+        P: float
     """
     def __init__(self, amplitude, ell_e, P, ell_p):
         super(QuasiCosPeriodic, self).__init__(amplitude, ell_e, P, ell_p)
