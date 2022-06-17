@@ -451,7 +451,7 @@ class Polynomial(covFunction):
         self.b = b
         self.c = c
 
-    def __call__(self, r, t1, t2):
+    def __call__(self, t1, t2):
         return (self.pars[1] * t1 * t2 + self.pars[2])**self.pars[3]
 
 
@@ -595,7 +595,7 @@ class HarmonicPeriodic(covFunction):
         self.ell = ell
         self.P = P
         self.params_number = 4  #number of hyperparameters
-    def __call__(self, r, t1, t2):
+    def __call__(self, t1, t2):
         first = np.sin((self.N+0.5)*2*np.pi*t1/self.P) / 2*np.sin(np.pi*t1/self.P)
         second = np.sin((self.N+0.5)*2*np.pi*t2/self.P) / 2*np.sin(np.pi*t2/self.P)
         firstPart = (first - second)**2
@@ -628,7 +628,7 @@ class QuasiHarmonicPeriodic(covFunction):
         self.P = P
         self.ell_p = ell_p
         self.params_number = 5  #number of hyperparameters
-    def __call__(self, r, t1, t2):
+    def __call__(self, t1, t2):
         first = np.sin((self.N+0.5)*2*np.pi*t1/self.P) / 2*np.sin(np.pi*t1/self.P)
         second = np.sin((self.N+0.5)*2*np.pi*t2/self.P) / 2*np.sin(np.pi*t2/self.P)
         firstPart = (first - second)**2

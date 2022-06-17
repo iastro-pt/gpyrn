@@ -2,6 +2,7 @@
 Auxiliary Gaussian processes functions
 """
 import numpy as np
+from . import covfunc
 from .covfunc import covFunction as kernels
 from scipy.linalg import cho_factor, cho_solve
 
@@ -38,11 +39,23 @@ class GP(object):
 
     def _kernel_matrix(self, kernel, time):
         """ Returns a cov matrix when evaluating a given kernel at inputs time """
+        if isinstance(kernel, (covfunc.HarmonicPeriodic, 
+                               covfunc.QuasiHarmonicPeriodic, 
+                               covfunc.Polynomial)):
+            r = time[:, None]
+            s = time[None, :]
+            return kernel(r, s)
         r = time[:, None] - time[None, :]
         K = kernel(r) + 1.25e-12*np.diag(np.diag(np.ones_like(r)))
         return K
 
     def _predict_kernel_matrix(self, kernel, time):
+        if isinstance(kernel, (covfunc.HarmonicPeriodic, 
+                               covfunc.QuasiHarmonicPeriodic, 
+                               covfunc.Polynomial)):
+            r = time[:, None]
+            s = self.time[None, :]
+            return kernel(r, s)
         """ To be used in prediction() """
         r = time[:, None] - self.time[None, :]
         K = kernel(r)

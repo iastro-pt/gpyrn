@@ -423,6 +423,12 @@ class inference:
             K: array
                 Matrix of a covariance function
         """
+        if isinstance(kernel, (covfunc.HarmonicPeriodic, 
+                               covfunc.QuasiHarmonicPeriodic, 
+                               covfunc.Polynomial)):
+            r = time[:, None]
+            s = time[None, :]
+            return kernel(r, s)
         r = time[:, None] - time[None, :]
         K = kernel(r) + 1e-6 * np.eye(time.size)
         return K
@@ -436,6 +442,12 @@ class inference:
         Returns:
             K: array Matrix of a covariance function
         """
+        if isinstance(kernel, (covfunc.HarmonicPeriodic, 
+                               covfunc.QuasiHarmonicPeriodic, 
+                               covfunc.Polynomial)):
+            r = time[:, None]
+            s = time[None, :]
+            return kernel(r, s)
         r = time[:, None] - time[None, :]
         K = kernel(r) + 1.25e-12 * np.diag(np.diag(np.ones_like(r)))
         return K
