@@ -46,21 +46,20 @@ If you use this package in your work, please cite the following publication
 (currently under review)
 
 ```bibtex
-@ARTICLE{gpyrn2022,
-    author = {{Camacho}, J.~D. and {Faria}, J.~P. and {Viana}, P.~T.~P.},
-        title = "{Modelling stellar activity with Gaussian process regression networks}",
-    journal = {arXiv e-prints},
-    keywords = {Astrophysics - Earth and Planetary Astrophysics, Astrophysics - Solar and Stellar Astrophysics},
-        year = 2022,
-        month = may,
-        eid = {arXiv:2205.06627},
-        pages = {arXiv:2205.06627},
-archivePrefix = {arXiv},
-    eprint = {2205.06627},
-primaryClass = {astro-ph.EP},
-    adsurl = {https://ui.adsabs.harvard.edu/abs/2022arXiv220506627C},
-    adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+
+@article{10.1093/mnras/stac3727,
+    author = {Camacho, J D and Faria, J P and Viana, P T P},
+    title = "{Modelling stellar activity with Gaussian process regression networks}",
+    journal = {Monthly Notices of the Royal Astronomical Society},
+    year = {2022},
+    month = {12},
+    issn = {0035-8711},
+    doi = {10.1093/mnras/stac3727},
+    url = {https://doi.org/10.1093/mnras/stac3727},
+    note = {stac3727},
+    eprint = {https://academic.oup.com/mnras/advance-article-pdf/doi/10.1093/mnras/stac3727/48453218/stac3727.pdf},
 }
+
 ```
 
 
