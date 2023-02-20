@@ -191,7 +191,7 @@ class inference:
         self.nodes = nodes
         self.weights = weights
         self.means = means
-        self.jitters = np.array(jitters, dtype=np.float)
+        self.jitters = np.array(jitters, dtype=float)
         self._components_set = True
         self._initMuVar(nodes, weights, jitters)
 
@@ -515,6 +515,12 @@ class inference:
             K: array
                 Matrix of a covariance function
         """
+        if isinstance(kernel, (covfunc.HarmonicPeriodic, 
+                               covfunc.QuasiHarmonicPeriodic, 
+                               covfunc.Polynomial)):
+            r = time[:, None]
+            s = time[None, :]
+            return kernel(r, s)
         r = time[:, None] - time[None, :]
         K = kernel(r) + NUGGET * np.eye(time.size)
         return K
@@ -528,6 +534,12 @@ class inference:
         Returns:
             K: array Matrix of a covariance function
         """
+        if isinstance(kernel, (covfunc.HarmonicPeriodic, 
+                               covfunc.QuasiHarmonicPeriodic, 
+                               covfunc.Polynomial)):
+            r = time[:, None]
+            s = time[None, :]
+            return kernel(r, s)
         r = time[:, None] - time[None, :]
         K = kernel(r) + 1.25e-12 * np.diag(np.diag(np.ones_like(r)))
         return K
@@ -1349,14 +1361,11 @@ class inference:
         autocorr = np.empty(niter)
         old_tau = np.inf
 
-        # with tqdm.tqdm(total=niter) as pbar:
-        for sample in sampler.sample(p0, iterations=niter):
-            # pbar.update(1)
-            # pbar.set_description()
+        for sample in sampler.sample(p0, iterations=niter, progress=True):
             # if sampler.iteration % 10 == 0:
             #     print(sample.log_prob.max())
-            # check convergence every 100 steps
-            if sampler.iteration % 10:
+            # # check convergence every 100 steps
+            if sampler.iteration % 100:
                 continue
 
             # Compute the autocorrelation time so far
