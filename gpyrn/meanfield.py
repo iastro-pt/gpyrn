@@ -174,7 +174,7 @@ class inference:
         self.nodes = nodes
         self.weights = weights
         self.means = means
-        self.jitters = np.array(jitters, dtype=np.float)
+        self.jitters = np.array(jitters, dtype=float)
         self._components_set = True
 
     def get_parameters(self, nodes=None, weights=None, means=None,
@@ -1262,10 +1262,10 @@ class inference:
         old_tau = np.inf
 
         for sample in sampler.sample(p0, iterations=niter, progress=True):
-            if sampler.iteration % 10 == 0:
-                print(sample.log_prob.max())
-            # check convergence every 100 steps
-            if sampler.iteration % 10:
+            # if sampler.iteration % 10 == 0:
+            #     print(sample.log_prob.max())
+            # # check convergence every 100 steps
+            if sampler.iteration % 100:
                 continue
 
             # Compute the autocorrelation time so far
@@ -1287,7 +1287,7 @@ class inference:
 
 
     def _Prediction(self, nodes=None, weights=None, means=None, jitters=None,
-                   tstar=None, mu=None, var=None, separate=False):
+                    tstar=None, mu=None, var=None, separate=False):
         """
         Prediction for mean-field inference
 
