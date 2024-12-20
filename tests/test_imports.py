@@ -1,8 +1,8 @@
 def test_import():
-    import gpyrn
+    import src.gpyrn
 
 
 def test_imports():
-    from gpyrn import covfunc
-    from gpyrn import meanfunc
-    from gpyrn import meanfield
+    from src.gpyrn import covfunc
+    from src.gpyrn import meanfunc
+    from src.gpyrn import meanfield

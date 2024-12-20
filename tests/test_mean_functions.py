@@ -1,7 +1,7 @@
 import pytest
 
 import numpy as np
-from gpyrn.meanfunc import Constant, Linear
+from src.gpyrn.meanfunc import Constant, Linear
 
 
 def test_Constant():
