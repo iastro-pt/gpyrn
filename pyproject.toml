@@ -1,0 +1,42 @@
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+
+[tool.coverage.run]
+omit = [
+    "tests/*"
+]
+
+[tool.poetry]
+name = "gpyrn"
+version = "2.0.0"
+description = "Gaussian process regression networks for exoplanet detection"
+authors = ["joao.camacho <joao.camacho@astro.up.pt>"]
+repository = "https://github.com/iastro-pt/gpyrn"
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+numpy = "^2.2.0"
+scipy = "^1.14.1"
+emcee = "^3.1.6"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+flake8 = "*"
+mypy = "*"
+pytest = "*"
+pytest-cov = "*"
+pydocstyle = "*"
+isort = "*"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,82 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  static_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up python
+        id: setup-python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11.8'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.5.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: |
+          poetry cache clear . --all
+          rm poetry.lock
+          poetry install --no-interaction --no-root
+
+      - name: Generate mypy cache key
+        id: mypy-cache-key
+        run: |
+          mypy_version=$(poetry run mypy --version | sed 's/[^0-9.]*\([0-9.]*\).*/\1/')
+          echo "version=$mypy_version" >> $GITHUB_OUTPUT
+          echo "key=mypy-${{ env.MYPY_CACHE_VERSION }}-$mypy_version-${{
+            env.HA_SHORT_VERSION }}-$(date -u '+%Y-%m-%dT%H:%M:%s')" >> $GITHUB_OUTPUT
+
+      - name: Restore mypy cache
+        uses: actions/cache@v3.3.1
+        with:
+          path: .mypy_cache
+          key: >-
+            ${{ runner.os }}-${{ steps.python.outputs.python-version }}-${{
+            steps.mypy-cache-key.outputs.key }}
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.python.outputs.python-version }}-mypy-${{
+            env.MYPY_CACHE_VERSION }}-${{ steps.mypy-cache-key.outputs.version }}-${{
+            env.HA_SHORT_VERSION }}-
+
+      - name: Check syntax with black
+        run: |
+          poetry run black --check examples/ src/ tests/
+
+      - name: Check imports correctly sorted 
+        run: |
+          poetry run isort --check-only --profile black examples/ src/ tests/
+
+      - name: Linting with flake8
+        run: |
+          poetry run flake8 --statistics examples/ src/ tests/
+
+      - name: Check types with mypy
+        run: |
+          poetry run mypy examples/ src/ tests/
+
+      - name: Run unit tests
+        run: |
+          poetry run pytest --cov-report term-missing --cov=src/
+
+      - name: Check docstrings
+        run: |
+          poetry run pydocstyle examples/ src/ tests/
